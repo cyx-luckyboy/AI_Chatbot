@@ -49,6 +49,29 @@
         </div>
 
         <!-- Font Size Setting -->
+        <div class="setting-item flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-8">
+          <label class="text-sm font-medium text-gray-700 w-24 shrink-0 pt-2">
+            {{ t('settings.baiduSpeech') }}
+          </label>
+          <div class="flex min-w-0 flex-1 flex-col gap-3">
+            <input
+              v-model="currentConfig.baiduAsrApiKey"
+              type="password"
+              autocomplete="off"
+              :placeholder="t('settings.baiduAsrApiKeyPlaceholder')"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 font-mono text-sm"
+            />
+            <input
+              v-model="currentConfig.baiduAsrSecretKey"
+              type="password"
+              autocomplete="off"
+              :placeholder="t('settings.baiduAsrSecretKeyPlaceholder')"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 font-mono text-sm"
+            />
+            <p class="text-xs text-gray-500 leading-snug">{{ t('settings.baiduSpeechHint') }}</p>
+          </div>
+        </div>
+
         <div class="setting-item flex items-center gap-8">
           <label class="text-sm font-medium text-gray-700 w-24">
             {{ t('settings.fontSize') }}
@@ -107,6 +130,7 @@ import { Icon } from '@iconify/vue'
 import { useI18n } from 'vue-i18n'
 import { AppConfig } from '../types'
 import { setI18nLanguage } from '../i18n'
+import { applyRootFontSize } from '../rootFontSize'
 import { useProviderStore } from '../stores/provider'
 import { providerConfigs, ProviderConfigItem } from '../config/providerConfig'
 import {
@@ -143,7 +167,9 @@ const providers = computed(() => providerStore.items)
 const currentConfig = reactive<AppConfig>({
   language: 'zh',
   fontSize: 14,
-  providerConfigs: {}
+  providerConfigs: {},
+  baiduAsrApiKey: '',
+  baiduAsrSecretKey: '',
 })
 
 onMounted(async () => {
@@ -157,11 +183,13 @@ watch(currentConfig, async (newConfig) => {
   const configToSave = {
     language: newConfig.language,
     fontSize: newConfig.fontSize,
-    providerConfigs: JSON.parse(JSON.stringify(newConfig.providerConfigs))
+    providerConfigs: JSON.parse(JSON.stringify(newConfig.providerConfigs)),
+    baiduAsrApiKey: newConfig.baiduAsrApiKey ?? '',
+    baiduAsrSecretKey: newConfig.baiduAsrSecretKey ?? '',
   }
   await window.electronAPI.updateConfig(configToSave)
-  // 更新界面语言
   setI18nLanguage(newConfig.language)
+  applyRootFontSize(newConfig.fontSize)
 }, { deep: true })
 
 // 获取provider对应的配置项

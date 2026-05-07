@@ -8,7 +8,20 @@ const viteDevServerUrls: Record<string, string> = {};
 
 export const builtins = ['electron', ...builtinModules.map((m) => [m, `node:${m}`]).flat()];
 
-export const external = [...builtins, ...Object.keys('dependencies' in pkg ? (pkg.dependencies as Record<string, unknown>) : {})];
+/** Used from main (IPC/providers): bundle so packaged app does not rely on `require()` resolving node_modules beside app.asar. */
+const bundleIntoElectronMain = new Set([
+  'mime-types',
+  'openai',
+  '@baiducloud/qianfan',
+  'electron-squirrel-startup',
+]);
+
+export const external = [
+  ...builtins,
+  ...Object.keys('dependencies' in pkg ? (pkg.dependencies as Record<string, unknown>) : {}).filter(
+    (name) => !bundleIntoElectronMain.has(name),
+  ),
+];
 
 export function getBuildConfig(env: ConfigEnv<'build'>): UserConfig {
   const { root, mode, command } = env;

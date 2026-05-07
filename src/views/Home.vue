@@ -12,11 +12,15 @@
 <script setup lang="ts">
 import { onMounted, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { db } from '../db'
 import { useConversationStore } from '../stores/conversation'
 import { useProviderStore } from '../stores/provider'
 import ProviderSelect from '../components/ProviderSelect.vue'
 import MessageInput from '../components/MessageInput.vue'
+import type { MessageCreatePayload } from '../types'
+import { persistUploadsFromRenderer } from '../persistUploads'
+const { t } = useI18n()
 const currentProvider = ref('')
 const router = useRouter()
 const conversationStore = useConversationStore()
@@ -29,32 +33,31 @@ const modelInfo = computed(() => {
     selectedModel
   }
 })
-const createConversation = async (question: string, imagePath?: string) => {
+const createConversation = async (payload: MessageCreatePayload) => {
+  const text = payload.text.trim()
+  if (!text && payload.uploads.length === 0) return
+  const attachments = await persistUploadsFromRenderer(payload.uploads)
+  if (!text && attachments.length === 0) return
+  const firstImage = attachments.find((a) => /\.(png|jpe?g|gif|webp|bmp)$/i.test(a.name))
   const { providerId, selectedModel } = modelInfo.value
   const currentDate = new Date().toISOString()
-  let copiedImagePath: string | undefined
-  if (imagePath) {
-    try {
-      copiedImagePath = await window.electronAPI.copyImageToUserDir(imagePath)
-      console.log('copiedImagePath', copiedImagePath)
-    } catch (error) {
-      console.error('Failed to copy image:', error)
-    }
-  }
   const conversationId = await conversationStore.createConversation({
-    title: question,
+    title:
+      text ||
+      (firstImage ? t('common.imageOnlyTitle') : attachments.length ? t('common.attachmentOnlyTitle') : t('common.imageOnlyTitle')),
     providerId,
     selectedModel,
     createdAt: currentDate,
     updatedAt: currentDate
   })
   const newMessageId  = await db.messages.add({
-    content: question,
+    content: text,
     conversationId,
     createdAt: currentDate,
     updatedAt: currentDate,
     type: 'question',
-    ...(copiedImagePath && { imagePath: copiedImagePath })
+    ...(firstImage && { imagePath: firstImage.path }),
+    ...(attachments.length > 0 && { attachments }),
   })
   conversationStore.selectedId = conversationId
   router.push(`/conversation/${conversationId}?init=${newMessageId}`)

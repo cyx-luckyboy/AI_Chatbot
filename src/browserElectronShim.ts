@@ -15,7 +15,9 @@ function install() {
       console.warn('[VChat] 浏览器环境未连接主进程，无法发起对话；请使用 npm start 在 Electron 中运行。')
     },
     onUpdateMessage(_callback: OnUpdatedCallback) {
-      /* no-op */
+      return () => {
+        /* noop: 浏览器环境无 IPC 流 */
+      }
     },
     showContextMenu(_id: number) {
       /* no-op */
@@ -25,6 +27,9 @@ function install() {
     },
     async copyImageToUserDir(sourcePath: string) {
       return sourcePath
+    },
+    async saveUserAttachment(_dataUrl: string, fileName: string) {
+      return `virtual-attachment://${encodeURIComponent(fileName)}`
     },
     async getConfig() {
       return { ...browserMockConfig, providerConfigs: { ...browserMockConfig.providerConfigs } }
@@ -39,6 +44,9 @@ function install() {
         },
       }
       return browserMockConfig
+    },
+    async baiduAsrRecognize() {
+      return { err_no: 0, result: ['（浏览器预览：未调用百度接口）'] }
     },
     onMenuNewConversation(_callback: () => void) {
       /* no-op */

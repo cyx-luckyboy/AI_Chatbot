@@ -7,8 +7,24 @@
             {{ formatDateTime(message.createdAt) }}
           </div>
           <div class="message-question bg-green-700 text-white p-2 rounded-md" v-if="message.type === 'question'">
-            <img v-if="message.imagePath" :src="`safe-file://${message.imagePath}`" alt="Message image" class="h-24 w-24 object-cover rounded block">
-            {{message.content}}
+            <div v-if="imagePreviews(message).length" class="mb-2 flex flex-wrap gap-2">
+              <img
+                v-for="img in imagePreviews(message)"
+                :key="img.path"
+                :src="`safe-file://${img.path}`"
+                alt=""
+                class="h-24 w-24 max-w-full object-cover rounded border border-white/20"
+              />
+            </div>
+            <div v-if="docAttachments(message).length" class="mb-2 flex flex-wrap gap-1">
+              <span
+                v-for="d in docAttachments(message)"
+                :key="d.path"
+                class="rounded bg-white/15 px-2 py-0.5 text-xs text-white/95"
+                :title="d.name"
+              >{{ d.name }}</span>
+            </div>
+            <span class="whitespace-pre-wrap">{{ message.content }}</span>
           </div>
           <div 
             class="message-answer p-2 rounded-md" 
@@ -40,8 +56,26 @@ import { formatDateTime } from '../formatDateTime'
 import { Icon } from '@iconify/vue'
 import VueMarkdown from 'vue-markdown-render'
 import markdownItHighlightjs from 'markdown-it-highlightjs'
-import { MessageProps } from '../types'
+import type { MessageAttachment, MessageProps } from '../types'
+
 defineProps<{ messages: MessageProps[] }>()
+
+function imagePreviews(m: MessageProps): MessageAttachment[] {
+  const from = (m.attachments ?? []).filter((a) => /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(a.name))
+  if (from.length) return from
+  if (m.imagePath) return [{ path: m.imagePath, name: pathBasename(m.imagePath) }]
+  return []
+}
+
+function docAttachments(m: MessageProps): MessageAttachment[] {
+  return (m.attachments ?? []).filter((a) => !/\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(a.name))
+}
+
+function pathBasename(p: string) {
+  const s = p.replace(/\\/g, '/')
+  const i = s.lastIndexOf('/')
+  return i >= 0 ? s.slice(i + 1) : p
+}
 const plugins = [ markdownItHighlightjs ]
 const _ref = ref<HTMLDivElement>()
 defineExpose({

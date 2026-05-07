@@ -17,8 +17,24 @@
         </RouterLink>
       </div>
     </div>
-    <div class="h-full flex-1">
-      <RouterView/>
+    <div class="h-full flex-1 flex min-h-0 min-w-0 flex-col">
+      <header
+        class="flex shrink-0 items-center justify-end gap-2 border-b border-gray-200 bg-gray-50 px-3 py-2"
+      >
+        <Button
+          type="button"
+          plain
+          size="small"
+          icon-name="radix-icons:reload"
+          class="!shadow-none"
+          @click="reloadApp"
+        >
+          {{ t('common.reloadApp') }}
+        </Button>
+      </header>
+      <div class="min-h-0 flex-1 overflow-hidden">
+        <RouterView />
+      </div>
     </div>
   </div>
 </template>
@@ -39,6 +55,10 @@ const { t } = useI18n()
 const conversationStore = useConversationStore()
 const provdierStore = useProviderStore()
 const items = computed(() => conversationStore.items)
+
+const reloadApp = () => {
+  window.location.reload()
+}
 
 // 监听菜单事件
 window.electronAPI.onMenuNewConversation(() => {

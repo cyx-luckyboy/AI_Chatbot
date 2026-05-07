@@ -1,15 +1,25 @@
+import './squirrel-startup'
 import { app, BrowserWindow, protocol, net } from 'electron'
 import path from 'path'
-import fs from 'fs/promises'
+import fs from 'fs'
 import url from 'url'
 import 'dotenv/config'
 import { configManager } from './config'
-import { createMenu, updateMenu } from './menu'
+import { createMenu } from './menu'
 import { setupIPC } from './ipc'
+import { APP_DISPLAY_NAME } from './appMeta'
 
-// Handle creating/removing shortcuts on Windows when installing/uninstalling.
-if (require('electron-squirrel-startup')) {
-  app.quit();
+/** 开发：仓库根目录 pig.ico；打包：extraResource 复制到 resources/pig.ico */
+function resolveWindowIconPath(): string | undefined {
+  const candidates = [path.join(process.resourcesPath, 'pig.ico'), path.join(__dirname, '..', '..', 'pig.ico')]
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) return p
+    } catch {
+      /* noop */
+    }
+  }
+  return undefined
 }
 
 const createWindow = async () => {
@@ -20,11 +30,22 @@ const createWindow = async () => {
   const mainWindow = new BrowserWindow({
     width: 1024,
     height: 768,
-    title: 'VChat',
+    title: APP_DISPLAY_NAME,
+    icon: resolveWindowIconPath(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
     },
-  });
+  })
+
+  /** 页面或路由若修改 document.title，仍保持标题栏与 APP_DISPLAY_NAME 一致 */
+  const lockWindowTitle = () => {
+    mainWindow.setTitle(APP_DISPLAY_NAME)
+  }
+  mainWindow.webContents.on('did-finish-load', lockWindowTitle)
+  mainWindow.webContents.on('page-title-updated', (event) => {
+    event.preventDefault()
+    lockWindowTitle()
+  })
 
   // Create application menu
   createMenu(mainWindow)
@@ -33,12 +54,8 @@ const createWindow = async () => {
   setupIPC(mainWindow)
 
   protocol.handle('safe-file', async (request) => {
-    console.log(request.url)
     const filePath = decodeURIComponent(request.url.slice('safe-file://'.length))
-    console.log(filePath)
-    const newFilePath = url.pathToFileURL(filePath).toString()
-    console.log(newFilePath)
-    return net.fetch(newFilePath)
+    return net.fetch(url.pathToFileURL(filePath).toString())
   })
 
   // Prefer runtime env (set when the renderer dev server listens) over compile-time define.

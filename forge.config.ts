@@ -1,4 +1,5 @@
 import type { ForgeConfig } from '@electron-forge/shared-types';
+import path from 'path';
 import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
 import { MakerDeb } from '@electron-forge/maker-deb';
@@ -7,14 +8,23 @@ import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 
+/** 与仓库根目录下的 pig.ico 对应（不要写扩展名，各平台由 packager 选后缀） */
+const appIconBase = path.resolve(__dirname, 'pig');
+
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    icon: appIconBase,
+    /** 打包后主进程可用 process.resourcesPath + '/pig.ico' 作为窗口图标 */
+    extraResource: [path.resolve(__dirname, 'pig.ico')],
   },
   rebuildConfig: {},
   makers: [
-    new MakerSquirrel({}),
-    new MakerZIP({}, ['darwin']),
+    // ZIP first on win32: Squirrel often fails if SquirrelTemp\Update.exe is locked; zip may still succeed in the same `make` run.
+    new MakerZIP({}, ['darwin', 'win32']),
+    new MakerSquirrel({
+      setupIcon: path.resolve(__dirname, 'pig.ico'),
+    }),
     new MakerRpm({}),
     new MakerDeb({}),
   ],

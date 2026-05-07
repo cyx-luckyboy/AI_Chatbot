@@ -50,13 +50,11 @@ const router = createRouter({
 })
 router.beforeEach((to) => {
   const store = useConversationStore()
-  console.log('path', to.path)
   if (!to.path.startsWith('/conversation/')) {
     store.selectedId = -1
   }
 })
 const pinia = createPinia()
-console.log('👋 This message is being logged by "renderer.ts", included via Vite');
 
 const app = createApp(App)
 app.use(pinia)

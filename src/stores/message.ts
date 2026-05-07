@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { db } from '../db'
-import { MessageProps, MessageStatus, UpdatgedStreamData } from '../types'
+import { MessageProps } from '../types'
 
 export interface MessageStore {
   items: MessageProps[]
