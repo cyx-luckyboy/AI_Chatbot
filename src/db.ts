@@ -48,6 +48,33 @@ const SEED_PROVIDERS: Omit<ProviderProps, 'id'>[] = [
     createdAt: '2026-05-07',
     updatedAt: '2026-05-07',
   },
+  {
+    name: 'xiaomi',
+    title: '小米 MiMo',
+    desc: 'Xiaomi MiMo OpenAI 兼容：Base URL 可留空，默认 https://api.xiaomimimo.com',
+    models: ['mimo-v2-flash'],
+    avatar: 'https://cdn.jsdelivr.net/npm/simple-icons/icons/xiaomi.svg',
+    createdAt: '2026-05-08',
+    updatedAt: '2026-05-08',
+  },
+  {
+    name: 'minimax',
+    title: 'MiniMax',
+    desc: 'OpenAI 兼容：Base URL 可留空，默认 https://api.minimax.io；国内可选用 https://api.minimaxi.com',
+    models: ['MiniMax-M2.7', 'MiniMax-M2.7-highspeed', 'MiniMax-M2.5', 'MiniMax-M2.1'],
+    avatar: 'https://cdn.jsdelivr.net/npm/simple-icons/icons/minimax.svg',
+    createdAt: '2026-05-08',
+    updatedAt: '2026-05-08',
+  },
+  {
+    name: 'openai',
+    title: 'ChatGPT',
+    desc: 'OpenAI 官方 API：Key 可来自设置或 OPENAI_API_KEY；Base 可留空，默认 https://api.openai.com',
+    models: ['gpt-4.1', 'gpt-4.1-mini', 'gpt-4o', 'gpt-4o-mini'],
+    avatar: 'https://openai.com/favicon.ico',
+    createdAt: '2026-05-08',
+    updatedAt: '2026-05-08',
+  },
 ]
 
 export const db = new Dexie('vChatDatabase') as Dexie & {

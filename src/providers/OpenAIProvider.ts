@@ -12,6 +12,46 @@ const TERMINAL_FINISH_REASONS = new Set([
   'function_call',
 ])
 
+/** 各厂商 OpenAI 兼容层 delta 字段差异大，统一抽取可见文本，避免只收到「.」或空白 */
+function extractOpenAIChatDeltaText(delta: unknown): string {
+  if (!delta || typeof delta !== 'object') return ''
+  const d = delta as Record<string, unknown>
+  const out: string[] = []
+
+  const takeContent = (c: unknown) => {
+    if (typeof c === 'string') {
+      out.push(c)
+      return
+    }
+    if (!Array.isArray(c)) return
+    for (const part of c) {
+      if (!part || typeof part !== 'object') continue
+      const p = part as Record<string, unknown>
+      const typ = p.type
+      if (typ === 'text' || typ === 'output_text') {
+        const text = p.text
+        if (typeof text === 'string') out.push(text)
+        else if (text && typeof text === 'object') {
+          const v = (text as Record<string, unknown>).value
+          if (typeof v === 'string') out.push(v)
+        }
+      }
+    }
+  }
+
+  takeContent(d.content)
+
+  const merged = out.join('')
+  if (merged.length > 0) return merged
+
+  const reasoning = d.reasoning_content ?? d.reasoning
+  if (typeof reasoning === 'string' && reasoning.length > 0) return reasoning
+
+  if (typeof d.refusal === 'string' && d.refusal.length > 0) return d.refusal
+
+  return ''
+}
+
 export class OpenAIProvider extends BaseProvider {
   private client: OpenAI;
   constructor(apiKey: string, baseURL: string) {
@@ -53,23 +93,7 @@ export class OpenAIProvider extends BaseProvider {
     const fr = typeof frRaw === 'string' ? frRaw.toLowerCase() : ''
     const is_end = fr !== '' && TERMINAL_FINISH_REASONS.has(fr)
 
-    const delta = choice.delta as {
-      content?: string | Array<{ type?: string; text?: string }>
-      refusal?: string | null
-    }
-    let result = ''
-    if (typeof delta?.content === 'string') {
-      result = delta.content
-    } else if (Array.isArray(delta?.content)) {
-      for (const part of delta.content) {
-        if (part && typeof part === 'object' && part.type === 'text' && typeof part.text === 'string') {
-          result += part.text
-        }
-      }
-    }
-    if (!result && typeof delta?.refusal === 'string' && delta.refusal) {
-      result = delta.refusal
-    }
+    const result = extractOpenAIChatDeltaText(choice.delta)
 
     return {
       is_end,

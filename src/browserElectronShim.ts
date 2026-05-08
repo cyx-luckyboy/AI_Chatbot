@@ -28,8 +28,9 @@ function install() {
     async copyImageToUserDir(sourcePath: string) {
       return sourcePath
     },
-    async saveUserAttachment(_dataUrl: string, fileName: string) {
-      return `virtual-attachment://${encodeURIComponent(fileName)}`
+    /** 返回 data URL 以便 <img> 能预览；纯浏览器无主进程读盘，virtual-attachment 会导致裂图 */
+    async saveUserAttachment(dataUrl: string, _fileName: string) {
+      return dataUrl
     },
     async getConfig() {
       return { ...browserMockConfig, providerConfigs: { ...browserMockConfig.providerConfigs } }

@@ -32,8 +32,8 @@
           {{ t('common.reloadApp') }}
         </Button>
       </header>
-      <div class="min-h-0 flex-1 overflow-hidden">
-        <RouterView />
+      <div class="min-h-0 flex-1 overflow-hidden flex flex-col">
+        <RouterView class="min-h-0 flex-1 flex flex-col" />
       </div>
     </div>
   </div>
@@ -72,8 +72,7 @@ window.electronAPI.onMenuOpenSettings(() => {
 onMounted(async () => {
   await initI18n()
   await initProviders()
-  // 获取最初需要的数据
-  conversationStore.fetchConversations()
-  provdierStore.fetchProviders()
+  await conversationStore.fetchConversations()
+  await provdierStore.fetchProviders()
 })
 </script>

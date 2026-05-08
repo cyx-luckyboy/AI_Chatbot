@@ -52,6 +52,8 @@ export default {
     voiceErr_voice_no_match: '未能识别成文字，请大声、清晰、慢一点再说。',
     voiceHint_baiduSecondClick: '录音中：请再次点击麦克风结束录音，识别结果会填入上方输入框。',
     imageOnlyTitle: '图片消息',
+    visionImageReplyUnusable:
+      '未收到有效回答。带**图片**的对话需要选用支持**视觉/多模态**的模型（例如通义 **qwen-vl-plus**、**GPT-4o**、Kimi 多模态等）；纯文本模型可能只返回空内容或单个标点。**说明**：大模型请求在 Electron **主进程**发出，在页面 Network 里通常看不到接口请求，属正常现象。请使用 `npm start` 启动桌面端。',
     attachmentOnlyTitle: '附件消息',
     chinese: '中文',
     english: 'English',

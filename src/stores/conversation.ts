@@ -7,6 +7,8 @@ export interface ConversationStore {
   selectedId: number;
 }
 
+let fetchConversationsInflight: Promise<void> | null = null
+
 export const useConversationStore = defineStore('conversation', {
   state: (): ConversationStore => {
     return {
@@ -15,16 +17,21 @@ export const useConversationStore = defineStore('conversation', {
     }
   },
   actions: {
+    /** 合并并发调用，避免多处几乎同时 toArray 完成后以错误顺序覆盖 items */
     async fetchConversations() {
-      const items = await db.conversations.toArray()
-      this.items = items
+      if (!fetchConversationsInflight) {
+        fetchConversationsInflight = (async () => {
+          this.items = await db.conversations.toArray()
+        })().finally(() => {
+          fetchConversationsInflight = null
+        })
+      }
+      await fetchConversationsInflight
     },
     async createConversation(createdData: Omit<ConversationProps, 'id'>) {
       const newCId = await db.conversations.add(createdData)
-      this.items.push({
-        id: newCId,
-        ...createdData
-      })
+      // 全量同步，避免与 App 首屏 fetch 交错时用 push 后被旧快照覆盖导致会话丢失
+      this.items = await db.conversations.toArray()
       return newCId
     },
     async deleteConversation(id: number) {

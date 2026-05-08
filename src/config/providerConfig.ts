@@ -66,10 +66,40 @@ const kimiFields: ProviderConfigItem[] = [
   },
 ];
 
+const xiaomiFields: ProviderConfigItem[] = [
+  { ...apiKeyBaseUrlConfig[0], placeholder: '小米 MiMo API Key（开放平台发放）' },
+  {
+    ...apiKeyBaseUrlConfig[1],
+    placeholder: '可留空，默认 https://api.xiaomimimo.com',
+  },
+];
+
+const minimaxFields: ProviderConfigItem[] = [
+  { ...apiKeyBaseUrlConfig[0], placeholder: 'MiniMax API Key（Bearer，见开放平台账户）' },
+  {
+    ...apiKeyBaseUrlConfig[1],
+    placeholder: '可留空，默认 https://api.minimax.io；国内可填 https://api.minimaxi.com',
+  },
+];
+
+const openaiFields: ProviderConfigItem[] = [
+  {
+    ...apiKeyBaseUrlConfig[0],
+    placeholder: 'OpenAI API Key（sk-…）；可与 .env 中 OPENAI_API_KEY 一致',
+  },
+  {
+    ...apiKeyBaseUrlConfig[1],
+    placeholder: '可留空，默认 https://api.openai.com；代理或 Azure 时填写对应根地址',
+  },
+];
+
 export const providerConfigs: Record<string, ProviderConfigItem[]> = {
   qianfan: qianfanFields,
   dashscope: dashscopeFields,
   deepseek: deepseekFields,
   claude: claudeFields,
   kimi: kimiFields,
+  xiaomi: xiaomiFields,
+  minimax: minimaxFields,
+  openai: openaiFields,
 };

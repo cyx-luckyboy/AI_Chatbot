@@ -53,6 +53,8 @@ export default {
     voiceHint_baiduSecondClick:
       'Recording: click the mic again to stop; text appears in the box above.',
     imageOnlyTitle: 'Image message',
+    visionImageReplyUnusable:
+      'No useful reply was returned. Image chats require a **vision / multimodal** model (e.g. **qwen-vl-plus**, **GPT-4o**, etc.). Text-only models may return empty or punctuation-only output. Note: API calls run in the Electron **main process**, so they often **do not appear** in the page Network tab. Run with `npm start` for the desktop app.',
     attachmentOnlyTitle: 'Attachment message',
     chinese: 'Chinese',
     english: 'English',

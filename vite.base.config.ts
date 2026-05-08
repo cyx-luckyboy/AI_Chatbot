@@ -14,6 +14,8 @@ const bundleIntoElectronMain = new Set([
   'openai',
   '@baiducloud/qianfan',
   'electron-squirrel-startup',
+  'pdf-parse',
+  'mammoth',
 ]);
 
 export const external = [

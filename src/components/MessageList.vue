@@ -11,7 +11,7 @@
               <img
                 v-for="img in imagePreviews(message)"
                 :key="img.path"
-                :src="`safe-file://${img.path}`"
+                :src="attachmentImageSrc(img.path)"
                 alt=""
                 class="h-24 w-24 max-w-full object-cover rounded border border-white/20"
               />
@@ -75,6 +75,20 @@ function pathBasename(p: string) {
   const s = p.replace(/\\/g, '/')
   const i = s.lastIndexOf('/')
   return i >= 0 ? s.slice(i + 1) : p
+}
+
+/**
+ * 必须用 `safe-file:///` 把编码后的绝对路径放在 pathname 里。
+ * 双斜杠 `safe-file://encode(path)` 会把 path 当成 host，Chromium 请求异常 → 裂图、模型也读不到同一文件。
+ */
+function safeLocalFileUrl(absPath: string) {
+  return `safe-file:///${encodeURIComponent(absPath)}`
+}
+
+/** 浏览器预览（browserElectronShim）会把附件存成 data URL；Electron 下为磁盘绝对路径 */
+function attachmentImageSrc(stored: string) {
+  if (stored.startsWith('data:') || stored.startsWith('blob:')) return stored
+  return safeLocalFileUrl(stored)
 }
 const plugins = [ markdownItHighlightjs ]
 const _ref = ref<HTMLDivElement>()

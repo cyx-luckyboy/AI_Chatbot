@@ -4,6 +4,20 @@ import path from 'path'
 import fs from 'fs'
 import url from 'url'
 import 'dotenv/config'
+
+/** 须在 app.ready 之前注册，否则渲染进程 <img src="safe-file://"> 无法加载本地附件 */
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'safe-file',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+    },
+  },
+])
 import { configManager } from './config'
 import { createMenu } from './menu'
 import { setupIPC } from './ipc'
@@ -54,8 +68,30 @@ const createWindow = async () => {
   setupIPC(mainWindow)
 
   protocol.handle('safe-file', async (request) => {
-    const filePath = decodeURIComponent(request.url.slice('safe-file://'.length))
-    return net.fetch(url.pathToFileURL(filePath).toString())
+    try {
+      /**
+       * 必须使用 `safe-file:///` + pathname 形式（三段斜杠）。
+       * `safe-file://${encodeURIComponent('E:\\a.png')}` 会被解析成「主机名为 E%3A...」的非法 URL，导致加载失败、裂图，且易与主进程读盘路径不一致。
+       */
+      let filePath = ''
+      try {
+        const u = new URL(request.url)
+        let enc = u.pathname
+        if (enc.startsWith('/')) enc = enc.slice(1)
+        filePath = decodeURIComponent(enc)
+      } catch {
+        const raw = request.url.replace(/^safe-file:\/\/?/i, '')
+        filePath = decodeURIComponent(raw.replace(/^\//, ''))
+      }
+      if (!filePath || !fs.existsSync(filePath)) {
+        console.error('[safe-file] 文件不存在或路径无效:', request.url, '→', filePath)
+        return new Response(null, { status: 404 })
+      }
+      return net.fetch(url.pathToFileURL(filePath).toString())
+    } catch (e) {
+      console.error('[safe-file]', request.url, e)
+      return new Response(null, { status: 500 })
+    }
   })
 
   // Prefer runtime env (set when the renderer dev server listens) over compile-time define.
