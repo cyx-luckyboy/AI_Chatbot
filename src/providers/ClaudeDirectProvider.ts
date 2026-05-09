@@ -62,7 +62,17 @@ export class ClaudeDirectProvider extends BaseProvider {
 
   async chat(messages: ChatMessageProps[], model: string) {
     const converted = await convertMessages(messages)
-    const anthropicMessages = toAnthropicMessages(converted)
+    const systemChunks: string[] = []
+    const dialog: typeof converted = []
+    for (const m of converted) {
+      if (m.role === 'system' && typeof m.content === 'string' && m.content.trim()) {
+        systemChunks.push(m.content.trim())
+      } else if (m.role !== 'system') {
+        dialog.push(m)
+      }
+    }
+    const system = systemChunks.length > 0 ? systemChunks.join('\n\n') : undefined
+    const anthropicMessages = toAnthropicMessages(dialog)
     const url = resolveClaudePostUrl(this.endpointUrl)
 
     const res = await fetch(url, {
@@ -71,6 +81,7 @@ export class ClaudeDirectProvider extends BaseProvider {
       body: JSON.stringify({
         model,
         max_tokens: 8192,
+        ...(system ? { system } : {}),
         messages: anthropicMessages,
         stream: true,
       }),

@@ -42,7 +42,32 @@ export const useMessageStore = defineStore('message', {
       if (index !== -1) {
         this.items[index] = { ...this.items[index], ...updatedData }
       }
-    }
+    },
+    /** 移除助手消息的反馈标记（IndexedDB 不支持用 undefined 删除字段时用 put 覆盖） */
+    async clearMessageFeedback(messageId: number) {
+      const row = await db.messages.get(messageId)
+      if (!row) return
+      const next = { ...row } as MessageProps & { feedback?: 'like' | 'dislike' }
+      delete next.feedback
+      await db.messages.put(next)
+      const index = this.items.findIndex((item) => item.id === messageId)
+      if (index !== -1) {
+        const cur = { ...this.items[index] }
+        delete (cur as MessageProps & { feedback?: unknown }).feedback
+        this.items[index] = cur
+      }
+    },
+    /** 删除本条及之后同会话消息（用于重新生成某条助手回复） */
+    async deleteMessageAndFollowing(conversationId: number, fromMessageId: number) {
+      const sorted = await db.messages.where({ conversationId }).sortBy('id')
+      const idx = sorted.findIndex((m) => m.id === fromMessageId)
+      if (idx === -1) return
+      const tail = sorted.slice(idx)
+      for (const m of tail) {
+        await db.messages.delete(m.id)
+      }
+      await this.fetchMessagesByConversation(conversationId)
+    },
   },
   getters: {
     getLastQuestion: (state) => (conversationId: number) => {

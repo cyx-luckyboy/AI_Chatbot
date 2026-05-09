@@ -38,6 +38,7 @@ import { useConversationStore } from './stores/conversation'
 import './index.css'
 import 'highlight.js/styles/github-dark.min.css'
 import { i18n } from './i18n'
+import { RESTORE_ROUTE_AFTER_RELOAD_KEY } from './restoreRouteKey'
 
 const routes = [
   { path: '/', component: Home },
@@ -50,7 +51,12 @@ const router = createRouter({
 })
 router.beforeEach((to) => {
   const store = useConversationStore()
-  if (!to.path.startsWith('/conversation/')) {
+  if (to.path.startsWith('/conversation/')) {
+    const id = parseInt(to.params.id as string, 10)
+    if (Number.isFinite(id)) {
+      store.selectedId = id
+    }
+  } else {
     store.selectedId = -1
   }
 })
@@ -60,4 +66,24 @@ const app = createApp(App)
 app.use(pinia)
 app.use(router)
 app.use(i18n)
-app.mount('#app')
+
+let routeToRestore = ''
+try {
+  routeToRestore = sessionStorage.getItem(RESTORE_ROUTE_AFTER_RELOAD_KEY) ?? ''
+  if (routeToRestore) {
+    sessionStorage.removeItem(RESTORE_ROUTE_AFTER_RELOAD_KEY)
+  }
+} catch {
+  /* 隐私模式等 */
+}
+
+void (async () => {
+  if (routeToRestore) {
+    try {
+      await router.replace(routeToRestore)
+    } catch {
+      await router.replace('/')
+    }
+  }
+  app.mount('#app')
+})()

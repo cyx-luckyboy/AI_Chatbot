@@ -2,3 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+.title-drag-region {
+  -webkit-app-region: drag;
+}
+
+.title-no-drag-region {
+  -webkit-app-region: no-drag;
+}

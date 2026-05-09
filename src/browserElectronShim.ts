@@ -7,8 +7,23 @@ import { DEFAULT_CONFIG } from './types'
 
 let browserMockConfig: AppConfig = { ...DEFAULT_CONFIG, providerConfigs: { ...DEFAULT_CONFIG.providerConfigs } }
 
+function inferPlatformFromUserAgent(): NodeJS.Platform {
+  if (typeof navigator === 'undefined') return 'win32'
+  const ua = navigator.userAgent
+  if (/Windows/i.test(ua)) return 'win32'
+  if (/Macintosh|Mac OS X/i.test(ua)) return 'darwin'
+  return 'linux'
+}
+
 function install() {
-  if (typeof window === 'undefined' || window.electronAPI) return
+  if (typeof window === 'undefined') return
+
+  /** preload 未注入或旧构建缺少 electronEnv 时，App.vue 无法显示自定义标题栏，无边框窗口会顶栏全空 */
+  if (!window.electronEnv) {
+    window.electronEnv = { platform: inferPlatformFromUserAgent() }
+  }
+
+  if (window.electronAPI) return
 
   window.electronAPI = {
     startChat(_data: CreateChatProps) {
@@ -32,6 +47,12 @@ function install() {
     async saveUserAttachment(dataUrl: string, _fileName: string) {
       return dataUrl
     },
+    async saveChatBackground(dataUrl: string) {
+      return dataUrl
+    },
+    async readLocalImageAsDataUrl(_path: string) {
+      return 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMB/6X9n90AAAAASUVORK5CYII='
+    },
     async getConfig() {
       return { ...browserMockConfig, providerConfigs: { ...browserMockConfig.providerConfigs } }
     },
@@ -54,6 +75,26 @@ function install() {
     },
     onMenuOpenSettings(_callback: () => void) {
       /* no-op */
+    },
+    windowMinimize() {
+      /* no-op */
+    },
+    windowToggleMaximize() {
+      /* no-op */
+    },
+    windowClose() {
+      /* no-op */
+    },
+    async isWindowMaximized() {
+      return false
+    },
+    onWindowMaximizedState(_callback: (maximized: boolean) => void) {
+      return () => {
+        /* noop */
+      }
+    },
+    async translateText(payload: { text: string; target: string }) {
+      return { ok: true as const, text: payload.text }
     },
   }
 }

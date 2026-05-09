@@ -1,7 +1,14 @@
 // See the Electron documentation for details on how to use preload scripts:
 // https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
 import { ipcRenderer, contextBridge } from 'electron'
-import type { CreateChatProps, OnUpdatedCallback, AppConfig, UpdatgedStreamData } from './types'
+import type {
+  CreateChatProps,
+  OnUpdatedCallback,
+  AppConfig,
+  UpdatgedStreamData,
+  TranslateTextResult,
+  TranslateTargetId,
+} from './types'
 import type { BaiduAsrRecognizePayload, BaiduAsrRecognizeResult } from './baiduAsrMain'
 // import { contextBridge, ipcRenderer } from 'electron';
 
@@ -17,6 +24,10 @@ function cloneForIpc<T>(data: T): T {
   }
 }
 
+contextBridge.exposeInMainWorld('electronEnv', {
+  platform: process.platform,
+})
+
 contextBridge.exposeInMainWorld('electronAPI', {
   startChat: (data: CreateChatProps) => ipcRenderer.send('start-chat', cloneForIpc(data)),
   onUpdateMessage: (callback: OnUpdatedCallback) => {
@@ -30,11 +41,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
   copyImageToUserDir: (sourcePath: string) => ipcRenderer.invoke('copy-image-to-user-dir', sourcePath),
   saveUserAttachment: (dataUrl: string, fileName: string) =>
     ipcRenderer.invoke('save-user-attachment', { dataUrl, fileName }),
+  saveChatBackground: (dataUrl: string) =>
+    ipcRenderer.invoke('save-chat-background', dataUrl) as Promise<string>,
+  readLocalImageAsDataUrl: (absPath: string) =>
+    ipcRenderer.invoke('read-local-image-as-data-url', absPath) as Promise<string>,
   getConfig: () => ipcRenderer.invoke('get-config'),
   updateConfig: (config: Partial<AppConfig>) =>
     ipcRenderer.invoke('update-config', cloneForIpc(config)),
   baiduAsrRecognize: (payload: BaiduAsrRecognizePayload) =>
     ipcRenderer.invoke('baidu-asr-recognize', cloneForIpc(payload)) as Promise<BaiduAsrRecognizeResult>,
   onMenuNewConversation: (callback: () => void) => ipcRenderer.on('menu-new-conversation', () => callback()),
-  onMenuOpenSettings: (callback: () => void) => ipcRenderer.on('menu-open-settings', () => callback())
+  onMenuOpenSettings: (callback: () => void) => ipcRenderer.on('menu-open-settings', () => callback()),
+  windowMinimize: () => ipcRenderer.send('window-minimize'),
+  windowToggleMaximize: () => ipcRenderer.send('window-maximize-toggle'),
+  windowClose: () => ipcRenderer.send('window-close'),
+  isWindowMaximized: () => ipcRenderer.invoke('window-is-maximized') as Promise<boolean>,
+  onWindowMaximizedState: (callback: (maximized: boolean) => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, v: unknown) => callback(Boolean(v))
+    ipcRenderer.on('window-maximized-state', handler)
+    return () => ipcRenderer.removeListener('window-maximized-state', handler)
+  },
+  translateText: (payload: { text: string; target: TranslateTargetId }) =>
+    ipcRenderer.invoke('translate-text', cloneForIpc(payload)) as Promise<TranslateTextResult>,
 })

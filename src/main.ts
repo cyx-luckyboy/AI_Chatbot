@@ -40,12 +40,14 @@ const createWindow = async () => {
   // 初始化配置
   await configManager.load()
 
-  // Create the browser window.
+  const isWin = process.platform === 'win32'
+  // Windows 原生标题栏无法放大/加粗顶栏图标与文字；无边框后由 App.vue 自绘顶栏与窗口按钮（titleBarOverlay 在 Win10 等环境常无按钮）
   const mainWindow = new BrowserWindow({
     width: 1024,
     height: 768,
     title: APP_DISPLAY_NAME,
     icon: resolveWindowIconPath(),
+    frame: !isWin,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
     },
@@ -70,19 +72,30 @@ const createWindow = async () => {
   protocol.handle('safe-file', async (request) => {
     try {
       /**
-       * 必须使用 `safe-file:///` + pathname 形式（三段斜杠）。
-       * `safe-file://${encodeURIComponent('E:\\a.png')}` 会被解析成「主机名为 E%3A...」的非法 URL，导致加载失败、裂图，且易与主进程读盘路径不一致。
+       * 推荐 `safe-file:///` + pathname（整段路径 URL 编码），主进程从 pathname 解码。
+       * 部分场景（如 CSS `url()`）会把 `safe-file:///C%3A...` 规范成 `safe-file://C%3A...`，
+       * 此时 WHATWG URL 会把路径放进 **hostname**、pathname 为空，必须兼容否则 404。
        */
-      let filePath = ''
-      try {
-        const u = new URL(request.url)
-        let enc = u.pathname
-        if (enc.startsWith('/')) enc = enc.slice(1)
-        filePath = decodeURIComponent(enc)
-      } catch {
-        const raw = request.url.replace(/^safe-file:\/\/?/i, '')
-        filePath = decodeURIComponent(raw.replace(/^\//, ''))
+      const resolveSafeFileLocalPath = (requestUrl: string): string => {
+        try {
+          const u = new URL(requestUrl)
+          let encPath = u.pathname
+          if (encPath.startsWith('/')) encPath = encPath.slice(1)
+          if (encPath) {
+            return decodeURIComponent(encPath)
+          }
+          if (u.hostname) {
+            const extra = u.pathname && u.pathname !== '/' ? u.pathname : ''
+            return decodeURIComponent(u.hostname + extra)
+          }
+        } catch {
+          /* fall through */
+        }
+        const raw = requestUrl.replace(/^safe-file:\/\/?/i, '')
+        return decodeURIComponent(raw.replace(/^\//, ''))
       }
+
+      const filePath = resolveSafeFileLocalPath(request.url)
       if (!filePath || !fs.existsSync(filePath)) {
         console.error('[safe-file] 文件不存在或路径无效:', request.url, '→', filePath)
         return new Response(null, { status: 404 })

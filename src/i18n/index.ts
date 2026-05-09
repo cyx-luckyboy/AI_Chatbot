@@ -2,6 +2,7 @@ import { createI18n } from 'vue-i18n'
 import en from '../locales/en'
 import zh from '../locales/zh'
 import { applyRootFontSize } from '../rootFontSize'
+import { applyAppearance, emitAppearanceChanged } from '../appearance'
 
 type MessageSchema = typeof zh
 type LanguageType = 'zh' | 'en'
@@ -21,6 +22,8 @@ export async function initI18n() {
   const config = await window.electronAPI.getConfig()
   setI18nLanguage(config.language)
   applyRootFontSize(config.fontSize)
+  applyAppearance(config)
+  emitAppearanceChanged()
 }
 
 export function setI18nLanguage(locale: LanguageType) {

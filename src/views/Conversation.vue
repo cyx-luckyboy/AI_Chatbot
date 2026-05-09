@@ -1,25 +1,41 @@
 <template>
-  <div class="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
+  <div class="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-slate-100 dark:bg-slate-950">
     <div
-      class="shrink-0 border-b border-gray-300 bg-gray-200 px-3 py-2 flex items-center justify-between"
+      aria-hidden="true"
+      class="pointer-events-none absolute inset-0 z-0 bg-cover bg-center bg-no-repeat opacity-[0.22] dark:opacity-[0.12]"
+      :style="wallpaperStyle"
+    />
+    <div
+      class="relative z-10 flex min-h-0 flex-1 flex-col"
+    >
+    <div
+      class="flex shrink-0 items-center justify-between border-b border-slate-200 bg-slate-200/90 px-3 py-2 dark:border-slate-600 dark:bg-slate-900"
       v-if="conversationDisplay"
     >
-      <h3 class="font-semibold text-gray-900">{{ conversationDisplay.title }}</h3>
-      <span class="text-sm text-gray-500">{{ formatDateTime(conversationDisplay.updatedAt) }}</span>
+      <h3 class="font-semibold text-gray-900 dark:text-slate-100">{{ conversationDisplay.title }}</h3>
+      <span class="text-sm text-gray-500 dark:text-slate-400">{{ formatDateTime(conversationDisplay.updatedAt) }}</span>
     </div>
-    <div class="min-h-0 flex-1 overflow-y-auto pt-2">
+    <div class="min-h-0 flex-1 overflow-y-auto bg-transparent pt-2">
       <div class="mx-auto w-[80%]">
-        <MessageList :messages="filteredMessages" ref="messageListRef" />
+        <MessageList
+          :messages="filteredMessages"
+          :regenerate-disabled="isReplyInProgress"
+          ref="messageListRef"
+          @regenerate="onRegenerateAnswer"
+          @quote="onQuoteFromMessage"
+        />
       </div>
     </div>
-    <div class="shrink-0 flex items-center py-2">
+    <div class="shrink-0 flex items-center border-t border-slate-200 bg-slate-100 py-2 dark:border-slate-800 dark:bg-slate-950">
       <div class="mx-auto w-[80%]">
         <MessageInput
+          ref="messageInputRef"
           @create="sendNewMessage"
           v-model="inputValue"
           :disabled="isReplyInProgress"
         />
       </div>
+    </div>
     </div>
   </div>
 </template>
@@ -28,6 +44,7 @@ import { ref, watch, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import MessageInput from '../components/MessageInput.vue'
 import MessageList from '../components/MessageList.vue'
+import { useChatWallpaperLayer } from '../useChatWallpaperLayer'
 import { useConversationStore } from '../stores/conversation'
 import { useMessageStore } from '../stores/message'
 import { useProviderStore } from '../stores/provider'
@@ -36,12 +53,16 @@ import { useI18n } from 'vue-i18n'
 import { formatDateTime } from '../formatDateTime'
 import { persistUploadsFromRenderer } from '../persistUploads'
 import { serializeCreateChatProps } from '../ipcSerialize'
+import { buildTranslatePromptForModel } from '../translatePrompt'
 import { db } from '../db'
 import type { ConversationProps } from '../types'
+const { wallpaperStyle } = useChatWallpaperLayer()
+
 const inputValue = ref('')
+const messageInputRef = ref<{ focusInput: () => void } | null>(null)
 let currentMessageListHeight = 0
 const messageListRef = ref<MessageListInstance>()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const route = useRoute()
 const conversationStore = useConversationStore()
 const messageStore = useMessageStore()
@@ -73,16 +94,25 @@ const isReplyInProgress = computed(() => {
       (item.status === 'loading' || item.status === 'streaming'),
   )
 })
-const sendedMessages = computed(() => filteredMessages.value
-  .filter(message => message.status!== 'loading' && message.status !== 'error')
-  .map((message) => {
-    return {
-      role: message.type === 'question' ? 'user' : 'assistant',
-      content: message.content,
-      ...(message.imagePath && { imagePath: message.imagePath }),
-      ...(message.attachments?.length && { attachments: message.attachments }),
-    }
-  })
+const sendedMessages = computed(() =>
+  filteredMessages.value
+    .filter((message) => message.status !== 'loading' && message.status !== 'error')
+    .map((message) => {
+      let content = message.content
+      if (message.type === 'question' && message.translateTarget) {
+        content = buildTranslatePromptForModel(
+          message.content,
+          message.translateTarget,
+          locale.value === 'zh' ? 'zh' : 'en',
+        )
+      }
+      return {
+        role: message.type === 'question' ? 'user' : 'assistant',
+        content,
+        ...(message.imagePath && { imagePath: message.imagePath }),
+        ...(message.attachments?.length && { attachments: message.attachments }),
+      }
+    }),
 )
 let conversationId = ref(parseInt(route.params.id as string))
 const initMessageId = parseInt(route.query.init as string)
@@ -115,6 +145,7 @@ const sendNewMessage = async (payload: MessageCreatePayload) => {
     type: 'question',
     ...(firstImage && { imagePath: firstImage.path }),
     ...(attachments.length > 0 && { attachments }),
+    ...(payload.translateWithModel && { translateTarget: payload.translateWithModel.target }),
   })
   inputValue.value = ''
   await creatingInitialMessage()
@@ -125,6 +156,23 @@ const messageScrollToBottom = async () => {
     messageListRef.value.ref.scrollIntoView({ block: 'end', behavior: 'smooth' })
   }
 }
+function onQuoteFromMessage(quotedMarkdown: string) {
+  const q = quotedMarkdown.trim()
+  if (!q) return
+  const cur = inputValue.value.trim()
+  inputValue.value = cur ? `${cur}\n\n${q}\n\n` : `${q}\n\n`
+  void nextTick(() => messageInputRef.value?.focusInput())
+}
+
+const onRegenerateAnswer = async (answerMessageId: number) => {
+  if (isReplyInProgress.value) return
+  const msg = messageStore.items.find((m) => m.id === answerMessageId)
+  if (!msg || msg.type !== 'answer' || msg.conversationId !== conversationId.value) return
+  streamBuffers.clear()
+  await messageStore.deleteMessageAndFollowing(conversationId.value, answerMessageId)
+  await creatingInitialMessage()
+}
+
 const creatingInitialMessage = async () => {
   const createdData: Omit<MessageProps, 'id'> = {
     content: '',

@@ -1,21 +1,21 @@
 <template>
   <div class="conversation-list">
     <div 
-      class="item border-gray-300 border-t cursor-pointer  p-2"
+      class="item cursor-pointer border-t border-gray-300 p-2 dark:border-slate-600"
       :class="{
-        'bg-gray-100 hover:bg-gray-300': store.selectedId === item.id,
-        'bg-white hover:bg-gray-200': store.selectedId !== item.id
+        'bg-gray-100 hover:bg-gray-300 dark:bg-slate-800 dark:hover:bg-slate-700': store.selectedId === item.id,
+        'bg-white hover:bg-gray-200 dark:bg-slate-900/80 dark:hover:bg-slate-800': store.selectedId !== item.id,
       }"
       v-for="item in items"
       :key="item.id"
       @contextmenu.prevent="showContextMenu(item.id)"
     >
      <a @click.prevent="goToConversation(item.id)">
-      <div class=" flex justify-between items-center text-sm leading-5 text-gray-500">
+      <div class="flex items-center justify-between text-sm leading-5 text-gray-500 dark:text-slate-400">
         <span>{{item.selectedModel}}</span>
         <span>{{dayjs(item.updatedAt).format('YYYY-MM-DD')}}</span>
       </div>
-      <h2 class=" font-semibold leading-6 text-gray-900 truncate">{{item.title}}</h2>
+      <h2 class="truncate font-semibold leading-6 text-gray-900 dark:text-slate-100">{{item.title}}</h2>
     </a>
     </div>
   </div>

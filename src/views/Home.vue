@@ -1,10 +1,17 @@
 <template>
-  <div class="w-[80%] mx-auto h-full">
-    <div class="flex items-center h-[85%]">
+  <div class="relative mx-auto h-full w-[80%]">
+    <div
+      aria-hidden="true"
+      class="pointer-events-none absolute inset-0 z-0 rounded-lg bg-cover bg-center bg-no-repeat opacity-[0.22] dark:opacity-[0.12]"
+      :style="wallpaperStyle"
+    />
+    <div class="relative z-10 flex h-full flex-col">
+    <div class="flex h-[85%] items-center bg-slate-100 dark:bg-slate-950">
       <ProviderSelect :items="providers" v-model="currentProvider"/>
     </div>
-    <div class="flex items-center h-[15%]">
+    <div class="flex h-[15%] items-center border-t border-slate-200 bg-slate-100 dark:border-slate-800 dark:bg-slate-950">
       <MessageInput @create="createConversation" :disabled="currentProvider === ''"/>
+    </div>
     </div>
   </div>
 </template>
@@ -19,8 +26,10 @@ import { useProviderStore } from '../stores/provider'
 import ProviderSelect from '../components/ProviderSelect.vue'
 import MessageInput from '../components/MessageInput.vue'
 import type { MessageCreatePayload } from '../types'
+import { useChatWallpaperLayer } from '../useChatWallpaperLayer'
 import { persistUploadsFromRenderer } from '../persistUploads'
 const { t } = useI18n()
+const { wallpaperStyle } = useChatWallpaperLayer()
 const currentProvider = ref('')
 const router = useRouter()
 const conversationStore = useConversationStore()
@@ -50,7 +59,7 @@ const createConversation = async (payload: MessageCreatePayload) => {
     createdAt: currentDate,
     updatedAt: currentDate
   })
-  const newMessageId  = await db.messages.add({
+  const newMessageId = await db.messages.add({
     content: text,
     conversationId,
     createdAt: currentDate,
@@ -58,6 +67,7 @@ const createConversation = async (payload: MessageCreatePayload) => {
     type: 'question',
     ...(firstImage && { imagePath: firstImage.path }),
     ...(attachments.length > 0 && { attachments }),
+    ...(payload.translateWithModel && { translateTarget: payload.translateWithModel.target }),
   })
   conversationStore.selectedId = conversationId
   router.push(`/conversation/${conversationId}?init=${newMessageId}`)

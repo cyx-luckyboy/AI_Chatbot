@@ -1,8 +1,7 @@
 <template>
   <div class="provider-select w-full">
     <SelectRoot v-model="currentModel">
-      <SelectTrigger class="flex w-full items-center justify-between 
-        rounded-md py-1.5 px-3 shadow-sm border outline-none data-[placeholder]:text-gray-400">
+      <SelectTrigger class="flex w-full items-center justify-between rounded-md border border-gray-300 bg-white py-1.5 px-3 shadow-sm outline-none data-[placeholder]:text-gray-400 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:data-[placeholder]:text-slate-500">
         <SelectValue :placeholder="t('provider.selectModel')" />
         <Icon
           icon="radix-icons:chevron-down"
@@ -10,10 +9,10 @@
         />
       </SelectTrigger>
       <SelectPortal>
-        <SelectContent class="bg-white rounded-md shadow-md z-[100] border">
+        <SelectContent class="z-[100] rounded-md border border-gray-200 bg-white shadow-md dark:border-slate-600 dark:bg-slate-900">
           <SelectViewport class="p-2">
             <div v-for="provider in items">
-              <SelectLabel class="flex items-center px-6 h-7 text-gray-500">
+              <SelectLabel class="flex h-7 items-center px-6 text-gray-500 dark:text-slate-400">
                 <img :src="provider.avatar" :alt="provider.name" class="h-5 w-5 mr-2 rounded">
                 {{provider.title}}
               </SelectLabel>
@@ -31,7 +30,7 @@
                   <SelectItemText>{{model}}</SelectItemText>
                 </SelectItem>
               </SelectGroup>
-              <SelectSeparator class="h-[1px] my-2 bg-gray-300" />
+              <SelectSeparator class="my-2 h-px bg-gray-300 dark:bg-slate-600" />
             </div>
           </SelectViewport>
         </SelectContent>
