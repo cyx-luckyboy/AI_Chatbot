@@ -1,36 +1,52 @@
-import { onMounted, onUnmounted, ref } from 'vue'
+import { nextTick, onMounted, onUnmounted, readonly, shallowRef } from 'vue'
 import { WALLPAPER_SYNC_EVENT } from './appearance'
+
+/** 全应用共享，避免多页面各拉一次壁纸并触发并发 patch */
+const wallpaperStyle = shallowRef<Record<string, string>>({})
+let listenerCount = 0
+let syncInFlight: Promise<void> | null = null
+
+async function syncWallpaper() {
+  if (syncInFlight) return syncInFlight
+  syncInFlight = (async () => {
+    const c = await window.electronAPI.getConfig()
+    const p = (c.chatBackgroundImagePath ?? '').trim()
+    let next: Record<string, string> = {}
+    if (p) {
+      try {
+        const data = p.startsWith('data:') ? p : await window.electronAPI.readLocalImageAsDataUrl(p)
+        next = { backgroundImage: `url("${data.replace(/"/g, '\\"')}")` }
+      } catch {
+        next = {}
+      }
+    }
+    await nextTick()
+    wallpaperStyle.value = next
+  })().finally(() => {
+    syncInFlight = null
+  })
+  return syncInFlight
+}
+
+function onSync() {
+  void syncWallpaper()
+}
 
 /** 聊天主区域背景：内联样式 + 监听配置变更，与设置页预览同源（readLocalImageAsDataUrl） */
 export function useChatWallpaperLayer() {
-  const wallpaperStyle = ref<Record<string, string>>({})
-
-  async function syncWallpaper() {
-    const c = await window.electronAPI.getConfig()
-    const p = (c.chatBackgroundImagePath ?? '').trim()
-    if (!p) {
-      wallpaperStyle.value = {}
-      return
-    }
-    try {
-      const data = p.startsWith('data:') ? p : await window.electronAPI.readLocalImageAsDataUrl(p)
-      wallpaperStyle.value = { backgroundImage: `url(${JSON.stringify(data)})` }
-    } catch {
-      wallpaperStyle.value = {}
-    }
-  }
-
-  const onSync = () => {
-    void syncWallpaper()
-  }
-
   onMounted(() => {
+    listenerCount += 1
+    if (listenerCount === 1) {
+      window.addEventListener(WALLPAPER_SYNC_EVENT, onSync)
+    }
     void syncWallpaper()
-    window.addEventListener(WALLPAPER_SYNC_EVENT, onSync)
   })
   onUnmounted(() => {
-    window.removeEventListener(WALLPAPER_SYNC_EVENT, onSync)
+    listenerCount = Math.max(0, listenerCount - 1)
+    if (listenerCount === 0) {
+      window.removeEventListener(WALLPAPER_SYNC_EVENT, onSync)
+    }
   })
 
-  return { wallpaperStyle, syncWallpaper }
+  return { wallpaperStyle: readonly(wallpaperStyle), syncWallpaper }
 }

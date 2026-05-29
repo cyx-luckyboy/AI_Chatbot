@@ -1,5 +1,6 @@
 <template>
-  <div class="mx-auto w-[80%] p-8 text-gray-900 dark:text-slate-100">
+  <div class="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain bg-slate-50 dark:bg-slate-950">
+  <div class="mx-auto w-[80%] max-w-3xl p-8 pb-16 text-gray-900 dark:text-slate-100">
     <h1 class="mb-8 text-2xl font-bold">{{ t('settings.title') }}</h1>
     
     <TabsRoot v-model="activeTab" class="w-full">
@@ -72,6 +73,22 @@
               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 font-mono text-sm"
             />
             <p class="text-xs text-gray-500 leading-snug">{{ t('settings.baiduSpeechHint') }}</p>
+          </div>
+        </div>
+
+        <div class="setting-item flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-8">
+          <label class="text-sm font-medium text-gray-700 w-24 shrink-0 pt-2">
+            {{ t('settings.webSearch') }}
+          </label>
+          <div class="flex min-w-0 flex-1 flex-col gap-3">
+            <input
+              v-model="currentConfig.tavilyApiKey"
+              type="password"
+              autocomplete="off"
+              :placeholder="t('settings.tavilyApiKeyPlaceholder')"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-green-500 font-mono text-sm dark:border-slate-600 dark:bg-slate-900"
+            />
+            <p class="text-xs text-gray-500 leading-snug dark:text-slate-400">{{ t('settings.webSearchHint') }}</p>
           </div>
         </div>
 
@@ -162,8 +179,8 @@
         </div>
       </TabsContent>
 
-      <TabsContent value="models" class="space-y-4">
-        <AccordionRoot type="single" collapsible>
+      <TabsContent value="models" class="space-y-4 pb-4">
+        <AccordionRoot type="single" collapsible class="pb-2">
           <AccordionItem v-for="provider in providers" :key="provider.id" :value="provider.name" class="mb-2 rounded-lg border border-gray-200 dark:border-slate-600">
             <AccordionTrigger class="flex w-full items-center justify-between p-4 text-left dark:hover:bg-slate-900/50">
               <div class="flex items-center gap-2">
@@ -191,6 +208,7 @@
         </AccordionRoot>
       </TabsContent>
     </TabsRoot>
+  </div>
   </div>
 </template>
 
@@ -242,6 +260,7 @@ const currentConfig = reactive<AppConfig>({
   providerConfigs: {},
   baiduAsrApiKey: '',
   baiduAsrSecretKey: '',
+  tavilyApiKey: '',
   theme: 'light',
   chatBackgroundImagePath: '',
 })
@@ -313,6 +332,7 @@ onMounted(async () => {
   Object.assign(currentConfig, config)
   if (!config.theme) currentConfig.theme = 'light'
   if (config.chatBackgroundImagePath == null) currentConfig.chatBackgroundImagePath = ''
+  if (config.tavilyApiKey == null) currentConfig.tavilyApiKey = ''
   await refreshChatBgPreview()
 })
 
@@ -328,8 +348,12 @@ watch(currentConfig, async (newConfig) => {
     providerConfigs: JSON.parse(JSON.stringify(newConfig.providerConfigs)),
     baiduAsrApiKey: newConfig.baiduAsrApiKey ?? '',
     baiduAsrSecretKey: newConfig.baiduAsrSecretKey ?? '',
+    tavilyApiKey: (newConfig.tavilyApiKey ?? '').trim(),
     theme: normalizeTheme(newConfig.theme),
     chatBackgroundImagePath: (newConfig.chatBackgroundImagePath ?? '').trim(),
+    imageGenBackend: newConfig.imageGenBackend,
+    imageGenModel: newConfig.imageGenModel,
+    imageGenJimengModel: newConfig.imageGenJimengModel,
   }
   const saved = await window.electronAPI.updateConfig(configToSave)
   setI18nLanguage(saved.language)

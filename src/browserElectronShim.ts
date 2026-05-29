@@ -47,6 +47,12 @@ function install() {
     async saveUserAttachment(dataUrl: string, _fileName: string) {
       return dataUrl
     },
+    getPathForFile(_file: File) {
+      return ''
+    },
+    async importUserAttachment(_sourcePath: string, fileName: string) {
+      throw new Error(`browser_no_import:${fileName}`)
+    },
     async saveChatBackground(dataUrl: string) {
       return dataUrl
     },
@@ -95,6 +101,30 @@ function install() {
     },
     async translateText(payload: { text: string; target: string }) {
       return { ok: true as const, text: payload.text }
+    },
+    async buildPptxFromMarkdown() {
+      return { ok: false as const, error: 'PPTX export requires Electron (npm start)' }
+    },
+    onPptBuildProgress(_callback: (payload: { answerId?: number; current: number; total: number }) => void) {
+      return () => undefined
+    },
+    async savePptxExportAs() {
+      return { ok: false as const, error: 'PPTX export requires Electron (npm start)' }
+    },
+    async showPptxInFolder() {
+      /* noop */
+    },
+    async openExternalUrl(url: string) {
+      window.open(url, '_blank', 'noopener,noreferrer')
+    },
+    async detectUserLocation() {
+      return { ok: false as const, error: '定位需要 Electron 桌面端（npm start）' }
+    },
+    async generateImage() {
+      return { ok: false as const, error: '图片生成需要 Electron 桌面端（npm start）' }
+    },
+    async saveGeneratedImageAs() {
+      return { ok: false as const, error: '图片保存需要 Electron 桌面端（npm start）' }
     },
   }
 }

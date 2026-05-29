@@ -1,4 +1,5 @@
 import './browserElectronShim'
+import './iconifySetup'
 
 /**
  * This file will automatically be loaded by vite and run in the "renderer" context.

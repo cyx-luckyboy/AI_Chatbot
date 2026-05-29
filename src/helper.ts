@@ -1,11 +1,10 @@
 import fs from 'fs/promises'
 import path from 'node:path'
 import { lookup } from 'mime-types'
-/** 勿用包入口 `pdf-parse`：其 index 在 `!module.parent` 时会读 `./test/data/...`，Vite 打进主进程后 module.parent 常为空，启动即 ENOENT。 */
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-import pdfParse = require('pdf-parse/lib/pdf-parse.js')
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const mammoth = require('mammoth')
+/** 勿用包入口 `pdf-parse`：其 index 在 `!module.parent` 时会读 `./test/data/...`，Vite 打进主进程后 module.parent 常为空，启动即 ENOENT。须用 ESM import，否则 Rollup 会留下运行时 `require`，打包后无 node_modules 即崩。 */
+import pdfParse from 'pdf-parse/lib/pdf-parse.js'
+import mammoth from 'mammoth'
+import JSZip from 'jszip'
 import type { ChatMessageProps } from './types'
 
 /** OpenAI JS SDK 会把请求发到 `${baseURL}/chat/completions`，因此 baseURL 须指向 …/v1。 */
@@ -23,6 +22,8 @@ const MAX_IMAGE_BYTES = 4 * 1024 * 1024
 const MAX_PDF_BYTES = 25 * 1024 * 1024
 /** Word .docx 抽取上限 */
 const MAX_DOCX_BYTES = 25 * 1024 * 1024
+/** PowerPoint .pptx 抽取上限（与附件导入上限一致） */
+const MAX_PPTX_BYTES = 50 * 1024 * 1024
 
 const TEXT_MIME_RE =
   /^(text\/|application\/(json|xml|javascript|x-www-form-urlencoded|yaml|x-yaml|sql|graphql))/
@@ -52,6 +53,89 @@ function isDocxFile(mime: string | false, fileName: string): boolean {
     return true
   }
   return /\.docx$/i.test(fileName)
+}
+
+function isPptxFile(mime: string | false, fileName: string): boolean {
+  if (
+    mime &&
+    /^application\/vnd\.openxmlformats-officedocument\.presentationml\.presentation$/i.test(mime)
+  ) {
+    return true
+  }
+  return /\.pptx$/i.test(fileName)
+}
+
+function decodeXmlEntities(s: string): string {
+  return s
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+}
+
+/** 从 slide/notes 等 OOXML 片段抽取 <a:t> 文本 */
+function extractATextFromOoxml(xml: string): string {
+  const lines: string[] = []
+  const re = /<a:t(?:\s[^>]*)?>([\s\S]*?)<\/a:t>/gi
+  let m: RegExpExecArray | null
+  while ((m = re.exec(xml)) !== null) {
+    const t = decodeXmlEntities(m[1].replace(/<[^>]+>/g, '')).trim()
+    if (t) lines.push(t)
+  }
+  return lines.join('\n')
+}
+
+function slideNumberFromPath(entryPath: string): number {
+  const slide = /\/slides\/slide(\d+)\.xml$/i.exec(entryPath)
+  if (slide) return parseInt(slide[1], 10)
+  const notes = /\/notesSlides\/notesSlide(\d+)\.xml$/i.exec(entryPath)
+  if (notes) return parseInt(notes[1], 10)
+  return 0
+}
+
+async function extractPptxPlainText(buffer: Buffer): Promise<{ text: string } | { error: string }> {
+  try {
+    const zip = await JSZip.loadAsync(buffer)
+    const slideEntries = Object.keys(zip.files)
+      .filter((name) => /^ppt\/slides\/slide\d+\.xml$/i.test(name) && !zip.files[name].dir)
+      .sort((a, b) => slideNumberFromPath(a) - slideNumberFromPath(b))
+
+    const notesBySlide = new Map<number, string>()
+    for (const name of Object.keys(zip.files)) {
+      if (!/^ppt\/notesSlides\/notesSlide\d+\.xml$/i.test(name) || zip.files[name].dir) continue
+      const n = slideNumberFromPath(name)
+      const xml = await zip.files[name].async('string')
+      const noteText = extractATextFromOoxml(xml).trim()
+      if (noteText) notesBySlide.set(n, noteText)
+    }
+
+    const sections: string[] = []
+    for (const entry of slideEntries) {
+      const n = slideNumberFromPath(entry)
+      const xml = await zip.files[entry].async('string')
+      const body = extractATextFromOoxml(xml).trim()
+      const note = notesBySlide.get(n)
+      let block = body
+      if (note) {
+        block = block ? `${body}\n\n【备注】\n${note}` : `【备注】\n${note}`
+      }
+      if (block) {
+        sections.push(`--- 第 ${n} 页 ---\n${block}`)
+      }
+    }
+
+    if (!sections.length) {
+      return {
+        error:
+          '未能从 PPTX 中提取到文本（可能为空、仅含图片/图表、加密或损坏；旧版 .ppt 请先另存为 .pptx）。',
+      }
+    }
+    return { text: sections.join('\n\n') }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    return { error: msg }
+  }
 }
 
 /** 附件路径可能是 Electron 落盘的绝对路径，或浏览器预览里存的 data URL */
@@ -112,7 +196,12 @@ export async function convertMessages(messages: ChatMessageProps[]) {
   const convertedMessages = []
   for (const message of messages) {
     const parts: ContentPart[] = []
-    const role = message.role === 'assistant' ? 'assistant' : 'user'
+    const role =
+      message.role === 'assistant'
+        ? 'assistant'
+        : message.role === 'system'
+          ? 'system'
+          : 'user'
     const text = (message.content ?? '').trim()
     if (text) {
       parts.push({ type: 'text', text })
@@ -238,6 +327,37 @@ export async function convertMessages(messages: ChatMessageProps[]) {
           parts.push({
             type: 'text',
             text: `【附件: ${name}】（读取或解析 Word 失败：${e instanceof Error ? e.message : String(e)}）`,
+          })
+        }
+      } else if (isPptxFile(mime, name)) {
+        try {
+          const { buffer } = await readBinaryFromPathOrDataUrl(filePath)
+          if (buffer.length > MAX_PPTX_BYTES) {
+            parts.push({
+              type: 'text',
+              text: `【附件: ${name}】约 ${Math.round(buffer.length / 1024 / 1024)}MB，超过 ${MAX_PPTX_BYTES / 1024 / 1024}MB 解析上限，已跳过。请压缩或拆分后重试。`,
+            })
+          } else {
+            const extracted = await extractPptxPlainText(buffer)
+            if ('error' in extracted) {
+              parts.push({
+                type: 'text',
+                text: `【附件: ${name}】PPTX 解析：${extracted.error}`,
+              })
+            } else {
+              const raw = extracted.text
+              const clipped =
+                raw.length > MAX_TEXT_CHARS ? `${raw.slice(0, MAX_TEXT_CHARS)}\n…(已截断)` : raw
+              parts.push({
+                type: 'text',
+                text: `【附件: ${name}】以下为从 .pptx 按幻灯片顺序抽取的文本（图表/ SmartArt 等可能无文字）；含演讲者备注。\n${clipped}`,
+              })
+            }
+          }
+        } catch (e) {
+          parts.push({
+            type: 'text',
+            text: `【附件: ${name}】（读取或解析 PowerPoint 失败：${e instanceof Error ? e.message : String(e)}）`,
           })
         }
       } else {

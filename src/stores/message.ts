@@ -6,6 +6,27 @@ export interface MessageStore {
   items: MessageProps[]
 }
 
+function questionBeforeAnswer(sorted: MessageProps[], answerIndex: number): MessageProps | undefined {
+  for (let i = answerIndex - 1; i >= 0; i--) {
+    if (sorted[i].type === 'question') return sorted[i]
+    if (sorted[i].type === 'answer') break
+  }
+  return undefined
+}
+
+/** 即梦出图任务：助手 loading 不应被「愈合」为 finished，否则首轮不会触发 runImageGeneration */
+export function isPendingImageGenerationAnswer(sorted: MessageProps[], answer: MessageProps): boolean {
+  if (answer.type !== 'answer') return false
+  const idx = sorted.findIndex((m) => m.id === answer.id)
+  if (idx < 0) return false
+  const q = questionBeforeAnswer(sorted, idx)
+  if (!q?.imageGenSize) return false
+  if (answer.imagePath) return false
+  if (answer.status === 'error') return false
+  if (answer.status === 'loading' || answer.status === 'streaming') return true
+  return answer.status === 'finished' && !(answer.content ?? '').trim()
+}
+
 export const useMessageStore = defineStore('message', {
   state: (): MessageStore => {
     return {
@@ -19,10 +40,14 @@ export const useMessageStore = defineStore('message', {
      * 否则会话页会认为仍有未完成的助手回复，输入框永久禁用。
      */
     async fetchMessagesByConversation(conversationId: number) {
-      const raw = await db.messages.where({ conversationId }).toArray()
+      const raw = await db.messages.where({ conversationId }).sortBy('id')
       const healed: MessageProps[] = []
       for (const m of raw) {
         if (m.type === 'answer' && (m.status === 'loading' || m.status === 'streaming')) {
+          if (isPendingImageGenerationAnswer(raw, m)) {
+            healed.push(m)
+            continue
+          }
           await db.messages.update(m.id, { status: 'finished' as MessageStatus })
           healed.push({ ...m, status: 'finished' })
         } else {

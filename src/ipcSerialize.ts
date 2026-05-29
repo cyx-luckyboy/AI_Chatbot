@@ -26,5 +26,7 @@ export function serializeCreateChatProps(data: CreateChatProps): CreateChatProps
     providerName: String(data.providerName),
     selectedModel: String(data.selectedModel),
     messages: plainChatMessages(data.messages),
+    ...(data.webSearch && { webSearch: true }),
+    ...(data.uiLang && { uiLang: data.uiLang }),
   }
 }

@@ -1,3 +1,4 @@
+import { nextTick } from 'vue'
 import { createI18n } from 'vue-i18n'
 import en from '../locales/en'
 import zh from '../locales/zh'
@@ -23,6 +24,7 @@ export async function initI18n() {
   setI18nLanguage(config.language)
   applyRootFontSize(config.fontSize)
   applyAppearance(config)
+  await nextTick()
   emitAppearanceChanged()
 }
 

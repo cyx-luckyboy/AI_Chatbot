@@ -1,6 +1,10 @@
-import { ipcMain, BrowserWindow, app } from 'electron'
+import { ipcMain, BrowserWindow, app, dialog, shell } from 'electron'
+import { MAX_IMPORT_ATTACHMENT_BYTES } from './attachmentLimits'
 import { CreateChatProps, type ChatMessageProps, type TranslateTextResult, type TranslateTargetId } from './types'
-import { buildSystemClockContext } from './chatClockContext'
+import { buildChatSystemContexts } from './chatSystemContext'
+import { notifyLocationConfigChanged, runAutoLocationDetect } from './locationDetect'
+import { fetchIpLocation, reverseGeocode } from './locationMain'
+import { fetchWindowsGeolocationDetailed } from './locationWindows'
 import { baiduAsrRecognize, type BaiduAsrRecognizePayload } from './baiduAsrMain'
 import { createProvider } from './providers/createProvider'
 import { configManager } from './config'
@@ -8,6 +12,22 @@ import { createContextMenu, updateMenu } from './menu'
 import fs from 'fs/promises'
 import path from 'path'
 import { lookup as mimeLookup } from 'mime-types'
+import { writePptxFromMarkdown } from './pptBuildFile'
+import {
+  runWebSearchChatPipeline,
+  shouldAutoWebSearch,
+  streamChatToWindow,
+} from './webSearchFlow'
+import { isValidLocationText } from './userLocation'
+import { generateImageMain } from './imageGenerateMain'
+import type {
+  BuildPptxResult,
+  GenerateImageResult,
+  ImageGenSizeId,
+  PptBuildProgressPayload,
+  SavePptxAsResult,
+} from './types'
+import { hasJimengCredentials } from './jimengGenerateMain'
 
 function parseDataUrlToBuffer(dataUrl: string): { buffer: Buffer; mime: string } {
   const comma = dataUrl.indexOf(',')
@@ -161,17 +181,22 @@ export function setupIPC(mainWindow: BrowserWindow) {
   // Chat handler
   ipcMain.on('start-chat', async (event, data: CreateChatProps) => {
     const { providerName, messages, messageId, selectedModel } = data
+    const win = BrowserWindow.fromWebContents(event.sender) ?? mainWindow
+    const lang = data.uiLang === 'en' ? 'en' : 'zh'
     try {
       const provider = createProvider(providerName)
       /** 每条请求附带真实本地时间：界面时间戳仅存本地库，不会被模型读到，否则只能靠训练截止日瞎猜。 */
-      const withClock: ChatMessageProps[] = [buildSystemClockContext(), ...messages]
-      const stream = await provider.chat(withClock, selectedModel)
-      for await (const chunk of stream) {
-        const content = {
-          messageId,
-          data: chunk
-        }
-        mainWindow.webContents.send('update-message', content)
+      const withSystem = [...buildChatSystemContexts(), ...messages]
+      const useWebPipeline = Boolean(data.webSearch) || shouldAutoWebSearch(withSystem)
+      if (useWebPipeline) {
+        await runWebSearchChatPipeline(
+          win,
+          provider,
+          { ...data, messages: withSystem, webSearch: Boolean(data.webSearch) },
+          lang,
+        )
+      } else {
+        await streamChatToWindow(win, provider, withSystem, selectedModel, messageId)
       }
     } catch (error) {
       console.error('Chat error:', error)
@@ -180,10 +205,11 @@ export function setupIPC(mainWindow: BrowserWindow) {
         data: {
           is_end: true,
           result: error instanceof Error ? error.message : '与AI服务通信时发生错误',
-          is_error: true
-        }
+          is_error: true,
+          replace: true,
+        },
       }
-      mainWindow.webContents.send('update-message', errorContent)
+      win.webContents.send('update-message', errorContent)
     }
   })
 
@@ -271,6 +297,32 @@ export function setupIPC(mainWindow: BrowserWindow) {
     },
   )
 
+  /** 大文件：从磁盘路径复制到 userData/attachments，避免渲染进程 base64 占满内存 */
+  ipcMain.handle(
+    'import-user-attachment',
+    async (_event, payload: { sourcePath: string; fileName: string }) => {
+      let st: Awaited<ReturnType<typeof fs.stat>>
+      try {
+        st = await fs.stat(payload.sourcePath)
+      } catch {
+        throw new Error('file_not_found')
+      }
+      if (!st.isFile()) throw new Error('not_a_file')
+      if (st.size > MAX_IMPORT_ATTACHMENT_BYTES) throw new Error('too_large')
+
+      const userDataPath = app.getPath('userData')
+      const dir = path.join(userDataPath, 'attachments')
+      await fs.mkdir(dir, { recursive: true })
+      const safe = sanitizeBasename(payload.fileName)
+      const destPath = path.join(
+        dir,
+        `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safe}`,
+      )
+      await fs.copyFile(payload.sourcePath, destPath)
+      return destPath
+    },
+  )
+
   /** 通用附件：data URL 写入 userData/attachments */
   ipcMain.handle(
     'save-user-attachment',
@@ -285,6 +337,242 @@ export function setupIPC(mainWindow: BrowserWindow) {
       const destPath = path.join(dir, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safe}${suffix}`)
       await fs.writeFile(destPath, buffer)
       return destPath
+    },
+  )
+
+  /** 将模型 Markdown 转为 .pptx，写入 userData/exports */
+  ipcMain.handle(
+    'build-pptx-from-markdown',
+    async (
+      event,
+      payload: {
+        markdown: string
+        suggestedName?: string
+        answerId?: number
+        quality?: import('./types').PptGenQualityId
+      },
+    ): Promise<BuildPptxResult> => {
+      try {
+        const dir = path.join(app.getPath('userData'), 'exports')
+        const quality = payload.quality ?? 'fast'
+        const premium = quality === 'premium' && hasJimengCredentials()
+        const sendProgress = (current: number, total: number) => {
+          const data: PptBuildProgressPayload = {
+            answerId: payload.answerId,
+            current,
+            total,
+          }
+          event.sender.send('ppt-build-progress', data)
+        }
+        if (premium) sendProgress(0, 1)
+
+        const result = await writePptxFromMarkdown(
+          payload.markdown,
+          dir,
+          payload.suggestedName,
+          {
+            quality,
+            onBackgroundProgress: premium ? sendProgress : undefined,
+          },
+        )
+
+        let warning: string | undefined
+        if (premium && result.backgroundCount === 0 && result.slideCount > 0) {
+          warning =
+            '精美模式未能生成 AI 背景图，请检查即梦 AK/SK；已使用主题配色导出可编辑 PPT。'
+        } else if (result.backgroundFailed > 0) {
+          warning = `部分 AI 背景生成失败（${result.backgroundFailed} 张），已用主题色替代。`
+        } else if (quality === 'premium' && !hasJimengCredentials()) {
+          warning = '未配置即梦 AK/SK，已按快速模式（无 AI 背景）导出。'
+        }
+
+        return {
+          ok: true,
+          path: result.path,
+          slideCount: result.slideCount,
+          backgroundCount: result.backgroundCount,
+          backgroundFailed: result.backgroundFailed,
+          ...(warning ? { warning } : {}),
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        console.error('[build-pptx-from-markdown]', e)
+        return { ok: false, error: msg }
+      }
+    },
+  )
+
+  ipcMain.handle(
+    'save-pptx-export-as',
+    async (_event, payload: { sourcePath: string }): Promise<SavePptxAsResult> => {
+      try {
+        const win = BrowserWindow.getFocusedWindow()
+        const base = path.basename(payload.sourcePath)
+        const r = await dialog.showSaveDialog(win ?? undefined, {
+          title: '保存 PowerPoint',
+          defaultPath: base,
+          filters: [{ name: 'PowerPoint', extensions: ['pptx'] }],
+        })
+        if (r.canceled || !r.filePath) return { ok: false, cancelled: true }
+        await fs.copyFile(payload.sourcePath, r.filePath)
+        return { ok: true, path: r.filePath }
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) }
+      }
+    },
+  )
+
+  ipcMain.handle('show-pptx-in-folder', async (_event, filePath: string) => {
+    shell.showItemInFolder(filePath)
+  })
+
+  ipcMain.handle('auto-detect-location', async () => {
+    const updated = await runAutoLocationDetect()
+    return { updated, config: configManager.get() }
+  })
+
+  ipcMain.handle(
+    'detect-user-location',
+    async (
+      _event,
+      payload?: { mode?: 'ip' | 'gps'; latitude?: number; longitude?: number },
+    ) => {
+      const mode = payload?.mode ?? 'ip'
+      const now = new Date().toISOString()
+      let detected: {
+        city: string
+        region: string
+        country: string
+        latitude?: number
+        longitude?: number
+        source: 'ip' | 'gps'
+      } | null = null
+
+      if (mode === 'gps') {
+        let lat = payload?.latitude
+        let lng = payload?.longitude
+        if (lat == null || lng == null) {
+          const win = await fetchWindowsGeolocationDetailed()
+          if (win.ok) {
+            lat = win.lat
+            lng = win.lng
+          } else if (win.code === 'disabled' || win.code === 'denied') {
+            return {
+              ok: false as const,
+              error:
+                'Windows 未允许本应用使用位置。请打开：设置 → 隐私和安全性 → 位置 → 开启定位，并开启「允许桌面应用访问位置」；若弹出权限对话框请选择允许。也可手动填写城市。',
+            }
+          } else if (win.code === 'timeout') {
+            return {
+              ok: false as const,
+              error: '本机定位超时。请连接 Wi‑Fi、开启 Windows 位置服务后重试，或手动填写城市。',
+            }
+          } else if (process.platform === 'win32') {
+            return {
+              ok: false as const,
+              error:
+                '本机定位失败（未获取到坐标）。请确认 Windows 位置服务已开启；控制台中的 Google 403 来自浏览器备用方案，与本机定位无关。建议直接手动填写城市。',
+            }
+          }
+        }
+        if (lat != null && lng != null) {
+          detected =
+            (await reverseGeocode(lat, lng)) ?? {
+              city: '',
+              region: '',
+              country: '',
+              latitude: lat,
+              longitude: lng,
+              source: 'gps',
+            }
+        } else if (process.platform !== 'win32') {
+          return {
+            ok: false as const,
+            error: 'BROWSER_GPS_FALLBACK',
+          }
+        } else {
+          return {
+            ok: false as const,
+            error: '本机定位失败，请手动填写城市。',
+          }
+        }
+      } else {
+        detected = await fetchIpLocation()
+      }
+
+      if (!detected || (!detected.city.trim() && !detected.region.trim())) {
+        return {
+          ok: false as const,
+          error:
+            '无法从网络获取城市（可能被防火墙拦截）。请检查能否访问外网，或直接在上方手动填写城市后保存。',
+        }
+      }
+
+      if (!isValidLocationText(detected.city) || !isValidLocationText(detected.region)) {
+        return {
+          ok: false as const,
+          error: '定位结果编码异常，请重试「IP 自动定位」或手动填写城市（如：杭州）。',
+        }
+      }
+
+      const patch = {
+        locationEnabled: true,
+        locationCity: detected.city,
+        locationRegion: detected.region,
+        locationCountry: detected.country,
+        locationLatitude: detected.latitude,
+        locationLongitude: detected.longitude,
+        locationSource: detected.source,
+        locationUpdatedAt: now,
+      }
+      await configManager.update(patch)
+      notifyLocationConfigChanged()
+      return { ok: true as const, ...patch }
+    },
+  )
+
+  ipcMain.handle('open-external-url', async (_event, rawUrl: string) => {
+    const u = String(rawUrl ?? '').trim()
+    if (!u) return
+    let parsed: URL
+    try {
+      parsed = new URL(u)
+    } catch {
+      throw new Error('invalid url')
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw new Error('unsupported protocol')
+    }
+    await shell.openExternal(parsed.href)
+  })
+
+  ipcMain.handle(
+    'generate-image',
+    async (
+      _event,
+      payload: { prompt: string; size: ImageGenSizeId; model?: import('./jimengModels').JimengImageModelId },
+    ): Promise<GenerateImageResult> => {
+      return generateImageMain(payload.prompt, payload.size, payload.model)
+    },
+  )
+
+  ipcMain.handle(
+    'save-generated-image-as',
+    async (_event, payload: { sourcePath: string }): Promise<SavePptxAsResult> => {
+      try {
+        const win = BrowserWindow.getFocusedWindow()
+        const base = path.basename(payload.sourcePath)
+        const r = await dialog.showSaveDialog(win ?? undefined, {
+          title: '保存图片',
+          defaultPath: base.endsWith('.png') ? base : `${base}.png`,
+          filters: [{ name: 'PNG 图片', extensions: ['png'] }],
+        })
+        if (r.canceled || !r.filePath) return { ok: false, cancelled: true }
+        await fs.copyFile(payload.sourcePath, r.filePath)
+        return { ok: true, path: r.filePath }
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) }
+      }
     },
   )
 }

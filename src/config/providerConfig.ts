@@ -93,6 +93,36 @@ const openaiFields: ProviderConfigItem[] = [
   },
 ];
 
+const jimengFields: ProviderConfigItem[] = [
+  {
+    key: 'accessKeyId',
+    label: 'Access Key ID',
+    value: '',
+    type: 'password',
+    required: true,
+    placeholder: 'IAM 密钥（常见 AKLT 开头）；勿填 apikey- 或 sk- 令牌',
+  },
+  {
+    key: 'secretKey',
+    label: 'Secret Access Key',
+    value: '',
+    type: 'password',
+    required: true,
+    placeholder: '与 Access Key ID 成对；控制台创建密钥时仅显示一次',
+  },
+]
+
+const aipaiboxFields: ProviderConfigItem[] = [
+  {
+    ...apiKeyBaseUrlConfig[0],
+    placeholder: 'AI派令牌 API Key（sk-…，在 api.aipaibox.com 令牌管理创建）',
+  },
+  {
+    ...apiKeyBaseUrlConfig[1],
+    placeholder: '可留空，默认 https://api.aipaibox.com（请求会自动补 /v1）',
+  },
+];
+
 export const providerConfigs: Record<string, ProviderConfigItem[]> = {
   qianfan: qianfanFields,
   dashscope: dashscopeFields,
@@ -102,4 +132,6 @@ export const providerConfigs: Record<string, ProviderConfigItem[]> = {
   xiaomi: xiaomiFields,
   minimax: minimaxFields,
   openai: openaiFields,
+  aipaibox: aipaiboxFields,
+  jimeng: jimengFields,
 };

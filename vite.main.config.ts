@@ -9,6 +9,10 @@ export default defineConfig((env) => {
   const define = getBuildDefine(forgeEnv);
   const config: UserConfig = {
     build: {
+      /** pdf-parse 内部 `require(\`./pdf.js/${version}/build/pdf.js\`)`，须参与预分析才能打进单文件 */
+      commonjsOptions: {
+        dynamicRequireTargets: ['node_modules/pdf-parse/lib/pdf.js/**/build/pdf.js'],
+      },
       lib: {
         entry: forgeConfigSelf.entry!,
         fileName: () => '[name].js',

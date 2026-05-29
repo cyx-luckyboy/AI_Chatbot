@@ -16,6 +16,8 @@ const bundleIntoElectronMain = new Set([
   'electron-squirrel-startup',
   'pdf-parse',
   'mammoth',
+  'jszip',
+  'pptxgenjs',
 ]);
 
 export const external = [

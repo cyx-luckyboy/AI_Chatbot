@@ -9,6 +9,7 @@ const KIMI_OPENAI_BASE = 'https://api.moonshot.cn'
 const XIAOMI_MIMO_OPENAI_BASE = 'https://api.xiaomimimo.com'
 const MINIMAX_OPENAI_BASE = 'https://api.minimax.io'
 const OPENAI_OFFICIAL_BASE = 'https://api.openai.com'
+const AIPAIBOX_OPENAI_BASE = 'https://api.aipaibox.com'
 
 function pickBaseUrl(config: Record<string, string>, fallback: string): string {
   const u = config.baseUrl?.trim()
@@ -55,6 +56,16 @@ export function createProvider(providerName: string): BaseProvider {
       const baseFromEnv = (process.env.OPENAI_BASE_URL || '').trim()
       const base = pickBaseUrl(c, baseFromEnv || OPENAI_OFFICIAL_BASE)
       return new OpenAIProvider(key.trim(), base)
+    }
+    case 'aipaibox': {
+      const key = (apiKey || process.env.AIPAIBOX_API_KEY || '').trim()
+      if (!key) {
+        throw new Error(
+          'AI派中转：请在「设置」填写 API Key，或在项目 .env 中设置 AIPAIBOX_API_KEY',
+        )
+      }
+      const baseFromEnv = (process.env.AIPAIBOX_BASE_URL || '').trim()
+      return new OpenAIProvider(key, pickBaseUrl(c, baseFromEnv || AIPAIBOX_OPENAI_BASE))
     }
     case 'claude': {
       const key = apiKey || process.env.ANTHROPIC_API_KEY || ''

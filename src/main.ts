@@ -19,6 +19,7 @@ protocol.registerSchemesAsPrivileged([
   },
 ])
 import { configManager } from './config'
+import { runAutoLocationDetect } from './locationDetect'
 import { createMenu } from './menu'
 import { setupIPC } from './ipc'
 import { APP_DISPLAY_NAME } from './appMeta'
@@ -39,6 +40,8 @@ function resolveWindowIconPath(): string | undefined {
 const createWindow = async () => {
   // 初始化配置
   await configManager.load()
+  const cfg0 = configManager.get()
+  void runAutoLocationDetect()
 
   const isWin = process.platform === 'win32'
   // Windows 原生标题栏无法放大/加粗顶栏图标与文字；无边框后由 App.vue 自绘顶栏与窗口按钮（titleBarOverlay 在 Win10 等环境常无按钮）
@@ -79,6 +82,17 @@ const createWindow = async () => {
       const resolveSafeFileLocalPath = (requestUrl: string): string => {
         try {
           const u = new URL(requestUrl)
+          /** Chromium 常把 `safe-file:///C%3A/...` 规范成 `safe-file://C/Users/...`（盘符进 hostname） */
+          if (
+            process.platform === 'win32' &&
+            u.hostname &&
+            /^[a-zA-Z]$/.test(u.hostname) &&
+            u.pathname &&
+            u.pathname !== '/'
+          ) {
+            const rest = decodeURIComponent(u.pathname).replace(/^\//, '').replace(/\//g, '\\')
+            return `${u.hostname.toUpperCase()}:\\${rest}`
+          }
           let encPath = u.pathname
           if (encPath.startsWith('/')) encPath = encPath.slice(1)
           if (encPath) {

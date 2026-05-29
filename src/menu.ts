@@ -29,8 +29,8 @@ const createContextMenu = (win: BrowserWindow, id: number) => {
       label: t('contextMenu.deleteConversation'),
       click: () => {
         win.webContents.send('delete-conversation', id)
-      }
-    }
+      },
+    },
   ]
   const menu = Menu.buildFromTemplate(template)
   menu.popup({ window: win })

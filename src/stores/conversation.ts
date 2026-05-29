@@ -35,17 +35,50 @@ export const useConversationStore = defineStore('conversation', {
       return newCId
     },
     async deleteConversation(id: number) {
-      await db.conversations.delete(id)
-      const index = this.items.findIndex(item => item.id === id)
+      await db.transaction('rw', db.messages, db.conversations, async () => {
+        await db.messages.where('conversationId').equals(id).delete()
+        await db.conversations.delete(id)
+      })
+      const index = this.items.findIndex((item) => item.id === id)
       if (index > -1) {
         this.items.splice(index, 1)
       }
-    }
+    },
+    async renameConversation(id: number, title: string) {
+      const trimmed = title.trim()
+      if (!trimmed) return
+      const now = new Date().toISOString()
+      await db.conversations.update(id, { title: trimmed, updatedAt: now })
+      const item = this.items.find((c) => c.id === id)
+      if (item) {
+        item.title = trimmed
+        item.updatedAt = now
+      }
+    },
+    async togglePinConversation(id: number) {
+      const item = this.items.find((c) => c.id === id)
+      if (!item) return
+      const pinnedAt = item.pinnedAt ? undefined : new Date().toISOString()
+      await db.conversations.update(id, { pinnedAt })
+      item.pinnedAt = pinnedAt
+    },
   },
   getters: {
     totalNumber: (state) => state.items.length,
     getConversationById: (state) => (id: number) => {
-      return state.items.find(item => item.id === id)
-    }
-  }
+      return state.items.find((item) => item.id === id)
+    },
+    /** 置顶在前，其余按 updatedAt 降序 */
+    sortedItems: (state) => {
+      return [...state.items].sort((a, b) => {
+        const ap = a.pinnedAt ? 1 : 0
+        const bp = b.pinnedAt ? 1 : 0
+        if (ap !== bp) return bp - ap
+        if (a.pinnedAt && b.pinnedAt && a.pinnedAt !== b.pinnedAt) {
+          return b.pinnedAt.localeCompare(a.pinnedAt)
+        }
+        return b.updatedAt.localeCompare(a.updatedAt)
+      })
+    },
+  },
 })
