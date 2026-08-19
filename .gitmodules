@@ -1,0 +1,6 @@
+[submodule "vendor/pipecat"]
+	path = vendor/pipecat
+	url = https://github.com/cyx-luckyboy/pipecat.git
+[submodule "vendor/GPT-SoVITS"]
+	path = vendor/GPT-SoVITS
+	url = https://github.com/cyx-luckyboy/GPT-SoVITS.git
