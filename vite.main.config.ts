@@ -1,4 +1,5 @@
 import type { ConfigEnv, UserConfig } from 'vite';
+import path from 'node:path';
 import { defineConfig, mergeConfig } from 'vite';
 import { getBuildConfig, getBuildDefine, external, pluginHotRestart } from './vite.base.config';
 
@@ -27,6 +28,11 @@ export default defineConfig((env) => {
     resolve: {
       // Load the Node.js entry.
       mainFields: ['module', 'jsnext:main', 'jsnext'],
+      alias: {
+        /** ws 打包进主进程时 optional require 会被静态解析，须指向 JS stub */
+        bufferutil: path.resolve(__dirname, 'src/shared/stubs/bufferutil-stub.cjs'),
+        'utf-8-validate': path.resolve(__dirname, 'src/shared/stubs/utf-8-validate-stub.cjs'),
+      },
     },
   };
 

@@ -1,7 +1,19 @@
 import OpenAI from 'openai'
 import { BaseProvider } from './BaseProvider'
-import { ChatMessageProps, UniversalChunkProps } from '../types'
-import { convertMessages, normalizeOpenAICompatibleBaseURL } from '../helper'
+import { ChatMessageProps, UniversalChunkProps } from '../shared/types'
+import { convertMessages, normalizeOpenAICompatibleBaseURL } from '../domains/chat/helper'
+
+export type AgentToolCallDelta = {
+  id: string
+  name: string
+  arguments: string
+}
+
+export type ChatWithToolsResult = {
+  content: string
+  toolCalls: AgentToolCallDelta[]
+  finishReason: string | null
+}
 
 /** 流式最后一帧可能带 length / tool_calls 等；仅判断 stop 会导致界面一直停在 loading */
 const TERMINAL_FINISH_REASONS = new Set([
@@ -83,6 +95,69 @@ export class OpenAIProvider extends BaseProvider {
         }
       }
     }
+  }
+
+  /** 非流式工具调用轮次（本机 Agent）；messages 为 OpenAI 原生格式 */
+  async chatWithTools(
+    messages: OpenAI.Chat.ChatCompletionMessageParam[],
+    model: string,
+    tools: OpenAI.Chat.ChatCompletionTool[],
+    toolChoice: 'auto' | 'required' = 'auto',
+  ): Promise<ChatWithToolsResult> {
+    const resp = await this.client.chat.completions.create({
+      model,
+      messages,
+      tools,
+      tool_choice: toolChoice,
+      stream: false,
+    })
+    const choice = resp.choices?.[0]
+    const msg = choice?.message as
+      | (OpenAI.Chat.ChatCompletionMessage & {
+          function_call?: { name?: string; arguments?: string }
+        })
+      | undefined
+    const toolCalls: AgentToolCallDelta[] = []
+
+    for (const tc of msg?.tool_calls ?? []) {
+      const anyTc = tc as {
+        id?: string
+        type?: string
+        function?: { name?: string; arguments?: string }
+        name?: string
+        arguments?: string
+      }
+      const name = anyTc.function?.name || anyTc.name || ''
+      const args = anyTc.function?.arguments || anyTc.arguments || ''
+      if (!name) continue
+      toolCalls.push({
+        id: anyTc.id || `call_${toolCalls.length + 1}`,
+        name,
+        arguments: typeof args === 'string' ? args : JSON.stringify(args ?? {}),
+      })
+    }
+
+    // 旧版 function_call
+    if (!toolCalls.length && msg?.function_call?.name) {
+      toolCalls.push({
+        id: 'call_function',
+        name: msg.function_call.name,
+        arguments: msg.function_call.arguments || '{}',
+      })
+    }
+
+    return {
+      content: typeof msg?.content === 'string' ? msg.content : '',
+      toolCalls,
+      finishReason: choice?.finish_reason ?? null,
+    }
+  }
+
+  /** 将 ChatMessageProps 转为 OpenAI messages（含附件文本展开） */
+  async toOpenAIMessages(
+    messages: ChatMessageProps[],
+  ): Promise<OpenAI.Chat.ChatCompletionMessageParam[]> {
+    return (await convertMessages(messages)) as OpenAI.Chat.ChatCompletionMessageParam[]
   }
   protected transformResponse(chunk: OpenAI.Chat.Completions.ChatCompletionChunk): UniversalChunkProps {
     const choice = chunk.choices?.[0]

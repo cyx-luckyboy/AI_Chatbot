@@ -2,12 +2,17 @@
 <html>
   <head>
     <meta charset="UTF-8" />
-    <!-- 与 src/appMeta.ts 中 APP_DISPLAY_NAME 保持一致 -->
+    <!-- 开发期 Electron 仍可能因 unsafe-eval（Monaco）提示 CSP；打包后通常不再警告。 -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-eval' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: file: safe-file:; font-src 'self' data:; connect-src 'self' https: http: ws: wss:; media-src 'self' blob: data: file:;"
+    />
+    <!-- 与 src/shared/appMeta.ts 中 APP_DISPLAY_NAME 保持一致 -->
     <title>小猪AI助手</title>
 
   </head>
   <body>
     <div id="app"></div>
-    <script type="module" src="/src/renderer.ts"></script>
+    <script type="module" src="/src/renderer/renderer.ts"></script>
   </body>
 </html>

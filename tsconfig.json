@@ -14,5 +14,5 @@
     "resolveJsonModule": true,
     "noImplicitThis": true
   },
-  "include": ["src/**/*", "src/preload.d.ts"]
+  "include": ["src/**/*", "src/preload/preload.d.ts"]
 }

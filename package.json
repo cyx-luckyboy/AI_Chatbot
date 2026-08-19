@@ -11,7 +11,12 @@
     "make": "electron-forge make",
     "make:zip": "electron-forge make --targets @electron-forge/maker-zip",
     "publish": "electron-forge publish",
-    "lint": "eslint --ext .ts,.tsx ."
+    "lint": "eslint --ext .ts,.tsx .",
+    "vendor:link": "powershell -ExecutionPolicy Bypass -File ./scripts/link-vendor.ps1",
+    "voice:tts": "powershell -ExecutionPolicy Bypass -File ./scripts/start-tts.ps1",
+    "voice:bot": "powershell -ExecutionPolicy Bypass -File ./scripts/start-voice-bot.ps1",
+    "start:all": "powershell -ExecutionPolicy Bypass -File ./scripts/start-all.ps1",
+    "services:status": "powershell -ExecutionPolicy Bypass -File ./scripts/check-services.ps1"
   },
   "keywords": [],
   "author": "admin <1246675664@qq.com>",
@@ -30,6 +35,8 @@
     "@tailwindcss/vite": "^4.2.1",
     "@types/electron-squirrel-startup": "^1.0.2",
     "@types/node": "^25.3.0",
+    "@types/three": "^0.160.0",
+    "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^5.62.0",
     "@typescript-eslint/parser": "^5.62.0",
     "@vitejs/plugin-vue": "^5.0.0",
@@ -46,6 +53,8 @@
   },
   "dependencies": {
     "@baiducloud/qianfan": "^0.2.4",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "dayjs": "^1.11.19",
     "dexie": "^4.3.0",
     "electron-squirrel-startup": "^1.0.1",
@@ -56,15 +65,20 @@
     "mammoth": "^1.12.0",
     "markdown-it-highlightjs": "^4.3.0",
     "mime-types": "^3.0.2",
+    "monaco-editor": "^0.52.2",
     "openai": "^6.24.0",
     "pdf-parse": "1.1.1",
     "pinia": "^3.0.4",
+    "pixi-live2d-display": "^0.4.0",
+    "pixi.js": "^6.5.10",
     "pptxgenjs": "^4.0.1",
     "radix-vue": "^1.9.17",
     "resolve-package": "^1.0.1",
+    "three": "^0.160.0",
     "vue-i18n": "^11.2.8",
     "vue-markdown-render": "^2.3.0",
-    "vue-router": "^5.0.3"
+    "vue-router": "^5.0.3",
+    "ws": "^8.21.0"
   },
   "type": "commonjs"
 }

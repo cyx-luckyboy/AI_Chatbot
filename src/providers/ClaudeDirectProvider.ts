@@ -1,6 +1,9 @@
 import { BaseProvider } from './BaseProvider'
-import { ChatMessageProps, UniversalChunkProps } from '../types'
-import { convertMessages } from '../helper'
+import { ChatMessageProps, UniversalChunkProps } from '../shared/types'
+import { convertMessages } from '../domains/chat/helper'
+import type { AgentToolCallDelta, ChatWithToolsResult } from './OpenAIProvider'
+import { toAnthropicToolDefinitions } from '../domains/workspace/agentToolRuntime'
+import type OpenAI from 'openai'
 
 type AnthropicRole = 'user' | 'assistant'
 
@@ -111,11 +114,91 @@ export class ClaudeDirectProvider extends BaseProvider {
       },
     }
   }
+
+  async toOpenAIMessages(
+    messages: ChatMessageProps[],
+  ): Promise<OpenAI.Chat.ChatCompletionMessageParam[]> {
+    return (await convertMessages(messages)) as OpenAI.Chat.ChatCompletionMessageParam[]
+  }
+
+  /** 非流式工具调用；messages 沿用 OpenAI 风格以便 Agent 循环共用 */
+  async chatWithTools(
+    messages: OpenAI.Chat.ChatCompletionMessageParam[],
+    model: string,
+    _tools: OpenAI.Chat.ChatCompletionTool[],
+    toolChoice: 'auto' | 'required' = 'auto',
+  ): Promise<ChatWithToolsResult> {
+    const systemChunks: string[] = []
+    const dialog: OpenAI.Chat.ChatCompletionMessageParam[] = []
+    for (const m of messages) {
+      if (m.role === 'system') {
+        const c = typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+        if (c.trim()) systemChunks.push(c.trim())
+      } else {
+        dialog.push(m)
+      }
+    }
+
+    const anthropicMessages = openAIMessagesToAnthropicTools(dialog)
+    const url = resolveClaudePostUrl(this.endpointUrl)
+    const tools = toAnthropicToolDefinitions()
+
+    const body: Record<string, unknown> = {
+      model,
+      max_tokens: 8192,
+      ...(systemChunks.length ? { system: systemChunks.join('\n\n') } : {}),
+      messages: anthropicMessages,
+      tools,
+      tool_choice: toolChoice === 'required' ? { type: 'any' } : { type: 'auto' },
+      stream: false,
+    }
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: buildClaudeHeaders(this.apiKey),
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '')
+      throw new Error(`${res.status} ${res.statusText}${errText ? `: ${errText.slice(0, 500)}` : ''}`)
+    }
+
+    const data = (await res.json()) as {
+      content?: unknown[]
+      stop_reason?: string
+    }
+    const toolCalls: AgentToolCallDelta[] = []
+    const textParts: string[] = []
+    for (const raw of data.content ?? []) {
+      if (!raw || typeof raw !== 'object') continue
+      const block = raw as Record<string, unknown>
+      if (block.type === 'text' && typeof block.text === 'string') {
+        textParts.push(block.text)
+      }
+      if (block.type === 'tool_use') {
+        const name = typeof block.name === 'string' ? block.name : ''
+        if (!name) continue
+        toolCalls.push({
+          id: typeof block.id === 'string' ? block.id : `tool_${toolCalls.length + 1}`,
+          name,
+          arguments: JSON.stringify(block.input ?? {}),
+        })
+      }
+    }
+
+    return {
+      content: textParts.join('\n'),
+      toolCalls,
+      finishReason: data.stop_reason ?? null,
+    }
+  }
 }
 
 type AnthropicBlock =
   | { type: 'text'; text: string }
   | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+  | { type: 'tool_use'; id: string; name: string; input: unknown }
+  | { type: 'tool_result'; tool_use_id: string; content: string }
 
 function parseDataUrlImage(url: string): { media_type: string; data: string } | null {
   const m = /^data:([^;]+);base64,(.+)$/is.exec(url.replace(/\s/g, ''))
@@ -141,6 +224,72 @@ function openAIBlocksToAnthropic(content: unknown[]): AnthropicBlock[] {
     }
   }
   return blocks
+}
+
+/** 将 Agent 循环中的 OpenAI 消息（含 tool）转为 Anthropic Messages */
+function openAIMessagesToAnthropicTools(
+  messages: OpenAI.Chat.ChatCompletionMessageParam[],
+): { role: AnthropicRole; content: string | AnthropicBlock[] }[] {
+  const out: { role: AnthropicRole; content: string | AnthropicBlock[] }[] = []
+
+  for (const m of messages) {
+    if (m.role === 'tool') {
+      const toolMsg = m as OpenAI.Chat.ChatCompletionToolMessageParam
+      const block: AnthropicBlock = {
+        type: 'tool_result',
+        tool_use_id: toolMsg.tool_call_id,
+        content: typeof toolMsg.content === 'string' ? toolMsg.content : JSON.stringify(toolMsg.content),
+      }
+      const last = out[out.length - 1]
+      if (last && last.role === 'user' && Array.isArray(last.content)) {
+        last.content.push(block)
+      } else {
+        out.push({ role: 'user', content: [block] })
+      }
+      continue
+    }
+
+    if (m.role === 'assistant') {
+      const blocks: AnthropicBlock[] = []
+      if (typeof m.content === 'string' && m.content.trim()) {
+        blocks.push({ type: 'text', text: m.content })
+      }
+      if ('tool_calls' in m && m.tool_calls?.length) {
+        for (const tc of m.tool_calls) {
+          if (!('function' in tc)) continue
+          let input: unknown = {}
+          try {
+            input = JSON.parse(tc.function.arguments || '{}')
+          } catch {
+            input = { raw: tc.function.arguments }
+          }
+          blocks.push({
+            type: 'tool_use',
+            id: tc.id,
+            name: tc.function.name,
+            input,
+          })
+        }
+      }
+      out.push({ role: 'assistant', content: blocks.length ? blocks : '' })
+      continue
+    }
+
+    if (m.role === 'user') {
+      let payload: string | AnthropicBlock[]
+      if (typeof m.content === 'string') {
+        payload = m.content
+      } else if (Array.isArray(m.content)) {
+        payload = openAIBlocksToAnthropic(m.content)
+        if (payload.length === 0) payload = ''
+      } else {
+        payload = ''
+      }
+      out.push({ role: 'user', content: payload })
+    }
+  }
+
+  return out
 }
 
 /** Anthropic Messages API：支持纯文本或多模态块（含 base64 图）。 */

@@ -2,6 +2,7 @@ import type { ConfigEnv, UserConfig } from 'vite';
 import { defineConfig } from 'vite';
 import { pluginExposeRenderer } from './vite.base.config';
 import vue from '@vitejs/plugin-vue'
+
 // https://vitejs.dev/config
 export default defineConfig((env) => {
   const forgeEnv = env as ConfigEnv<'renderer'>;
@@ -22,9 +23,16 @@ export default defineConfig((env) => {
       // If 5173 is taken, Forge has already deleted `.vite`; failing here leaves no `main.js` and Electron shows "cannot find module".
       strictPort: false,
     },
+    worker: {
+      format: 'es',
+    },
     plugins: [vue(), pluginExposeRenderer(name)],
     resolve: {
       preserveSymlinks: true,
+    },
+    optimizeDeps: {
+      include: ['pixi.js', 'pixi-live2d-display/cubism4', 'three'],
+      exclude: ['monaco-editor'],
     },
     clearScreen: false,
   } as UserConfig;

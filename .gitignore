@@ -90,3 +90,18 @@ typings/
 
 # Electron-Forge
 out/
+
+# Python sidecar: envs & large artifacts (source lives under vendor/)
+vendor/**/.venv/
+vendor/**/.venv_old*/
+vendor/**/__pycache__/
+vendor/**/*.pyc
+vendor/**/GPT_weights/
+vendor/**/SoVITS_weights/
+vendor/**/logs/
+vendor/**/*.ckpt
+vendor/**/*.pth
+vendor/**/*.safetensors
+
+# uv cache for Pipecat voice-bot
+.uv-cache/

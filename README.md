@@ -1,7 +1,8 @@
-# 小猪 AI 助手（pig-ai-assistant）
+# 小猪 AI 助手（pig-ai-assistant）— **vchat 总项目**
 
-基于 **Electron + Vue 3 + Vite** 的桌面端 AI 对话客户端，支持多家大模型厂商（OpenAI 兼容、百度千帆、阿里灵积、DeepSeek、Claude、Kimi、MiMo、MiniMax 等），消息与会话保存在本机 **IndexedDB**，大模型请求在 **主进程** 发起。
+本仓库为 **Monorepo**：Electron 桌面端 + 奶龙 TTS + Pipecat 语音对话，代码均在 `vchat/` 目录内（见 [`docs/overview.md`](./docs/overview.md)）。
 
+基于 **Electron + Vue 3 + Vite** 的桌面端 AI 对话客户端，支持多家大模型厂商，消息与会话保存在本机 **IndexedDB**。
 ## 功能概览
 
 - **多会话**：左侧会话列表、新建聊天、设置入口。
@@ -21,7 +22,19 @@ npm start          # 开发：Electron + Vite 热更新
 
 ## 文档
 
-- **[用户使用与开发说明（中文）](./docs/用户与开发说明.md)**：操作步骤、目录结构、主进程/渲染职责、附件与语音行为说明。
+- **[目录与功能总览](./docs/overview.md)**：域分类、`services` / `vendor`、语音栈启动。
+- **[用户使用与开发说明（中文）](./docs/用户与开发说明.md)**：操作步骤、主进程/渲染职责、附件与语音行为。
+- **[Pipecat 奶龙语音](./docs/pipecat-nailong-voice.md)**：持续语音对话联调。
+
+## 旁路语音（可选）
+
+```powershell
+npm run vendor:link   # 检查 vendor/pipecat 与 vendor/GPT-SoVITS 是否齐全
+npm run start:all     # TTS + voice-bot + 桌面端
+# 或分别：npm run voice:tts / npm run voice:bot / npm start
+```
+
+从旧布局（`E:\Project\pipecat` 与 vchat 平级）迁入：`scripts\migrate-vendor-in.ps1`。
 
 ## 说明
 

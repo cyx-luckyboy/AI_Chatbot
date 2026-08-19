@@ -1,7 +1,7 @@
 import { BaseProvider } from './BaseProvider'
 import { ClaudeDirectProvider } from './ClaudeDirectProvider'
 import { OpenAIProvider } from './OpenAIProvider'
-import { configManager } from '../config'
+import { configManager } from '../shared/config'
 
 const DASHSCOPE_OPENAI_BASE = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
 const DEEPSEEK_OPENAI_BASE = 'https://api.deepseek.com'

@@ -18,6 +18,7 @@ const bundleIntoElectronMain = new Set([
   'mammoth',
   'jszip',
   'pptxgenjs',
+  'ws',
 ]);
 
 export const external = [

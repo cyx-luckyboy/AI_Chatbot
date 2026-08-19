@@ -1,7 +1,7 @@
 import { ChatCompletion } from "@baiducloud/qianfan"
 import { BaseProvider } from './BaseProvider'
-import { ChatMessageProps, UniversalChunkProps, BaiduChunkProps } from '../types'
-import { convertMessages } from '../helper'
+import { ChatMessageProps, UniversalChunkProps, BaiduChunkProps } from '../shared/types'
+import { convertMessages } from '../domains/chat/helper'
 
 export class QianfanProvider extends BaseProvider {
   private client: any;
